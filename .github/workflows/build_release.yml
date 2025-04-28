@@ -1,0 +1,161 @@
+name: CI/CD Pipeline
+
+# TODO: Add support for MacOSX
+
+on:
+  push:
+    branches:
+      - main
+      - master
+      - release
+  pull_request:
+    branches:
+      - main
+      - master
+      - release
+
+env:
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: write
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: ./.github/actions/setup-go
+        with:
+          go-version: '1.23'
+          working-directory: './src'
+          goos: 'linux'
+
+      - name: Lint code
+        run: |
+          go install golang.org/x/lint/golint@latest
+          golint ./...
+        working-directory: './src'
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: ./.github/actions/setup-go
+        with:
+          go-version: '1.23'
+          working-directory: './src'
+          goos: 'linux'
+
+      - name: Test
+        run: go test ./... -v
+        working-directory: './src'
+
+  build:
+    needs: [lint, test]
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        goos: [linux, windows, darwin]
+        goarch: [amd64, arm64]
+        exclude:
+          - goos: windows
+            goarch: arm64  # Windows ARM64 not commonly supported
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: ./.github/actions/setup-go
+        with:
+          go-version: '1.23'
+          working-directory: './src'
+          goos: ${{ matrix.goos }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install semantic-release
+        run: npm install --global semantic-release @semantic-release/git @semantic-release/github @semantic-release/changelog @semantic-release/exec @semantic-release/commit-analyzer @semantic-release/release-notes-generator
+
+      - name: Determine next version
+        run: |
+          npx semantic-release --dry-run > semantic-release-output.txt
+          NEXT_VERSION=$(grep "The next release version is" semantic-release-output.txt | sed 's/.*The next release version is //')
+          echo "NEXT_VERSION=$NEXT_VERSION" >> $GITHUB_ENV
+
+      - name: Build client binary
+        run: |
+          BUILD_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          LD_FLAGS="-X version.Version=${NEXT_VERSION} -X version.BuildTime=${BUILD_TIME}"
+          BINARY_NAME=perception_engine_client_${{ matrix.goos }}_${{ matrix.goarch }}
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            BINARY_NAME="${BINARY_NAME}.exe"
+          fi
+          GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} CGO_ENABLED=1 go build -v -ldflags "${LD_FLAGS}" -o ./bin/${{ matrix.goos }}_${{ matrix.goarch }}/${BINARY_NAME} ./cmd/client.go
+
+      - name: Package binary
+        run: |
+          mkdir -p ./dist
+          BINARY_NAME=perception_engine_client_${{ matrix.goos }}_${{ matrix.goarch }}
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            zip ./dist/${BINARY_NAME}.zip ./bin/${{ matrix.goos }}_${{ matrix.goarch }}/${BINARY_NAME}.exe
+          else
+            zip ./dist/${BINARY_NAME}.zip ./bin/${{ matrix.goos }}_${{ matrix.goarch }}/${BINARY_NAME}
+          fi
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-files
+          path: ./dist/*.zip
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && !contains(github.event.head_commit.message, '[skip ci]')
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Required for commit analysis
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install semantic-release
+        run: npm install --global semantic-release @semantic-release/git @semantic-release/github @semantic-release/changelog @semantic-release/exec @semantic-release/commit-analyzer @semantic-release/release-notes-generator
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: production-files
+          path: ./dist
+
+      - name: Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx semantic-release
+
+  cleanup:
+    needs: [build, deploy]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cleanup artifacts
+        uses: geekyeggo/delete-artifact@v5
+        with:
+          name: production-files

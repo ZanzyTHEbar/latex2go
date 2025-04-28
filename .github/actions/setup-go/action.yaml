@@ -1,0 +1,58 @@
+name: 'Setup Go'
+description: 'Sets up Go environment and downloads dependencies'
+inputs:
+  go-version:
+    description: 'Go version to use'
+    required: true
+    default: '1.23'
+  working-directory:
+    description: 'Working directory for Go commands'
+    required: false
+    default: '.'
+  goos:
+    description: 'Operating system to build for'
+    required: true
+    default: 'linux'
+runs:
+  using: 'composite'
+  steps:
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: ${{ inputs.go-version }}
+        # TODO: Add cache for faster builds
+        #cache: 'go'
+        #cache-dependency-name: 'go'
+        #cache-dependency-path: 'go.mod'
+        #cache-dependency-type: 'module'
+        #cache-key: 'go-${{ runner.os }}-${{ hashFiles('go.mod') }}'
+        #cache-restore-keys: 'go-${{ runner.os }}-${{ hashFiles('go.mod') }}'
+
+    - name: Setup build dependencies (Linux only)
+      if: contains(inputs.goos, 'linux')
+      run: |
+        sudo apt update
+        sudo apt install -y libudev-dev build-essential
+      shell: bash
+    
+    # TODO: Add check to ensure that Windows matrix has compiler installed and is set up
+    - name: Setup build dependencies (Windows only)
+      if: contains(inputs.goos, 'windows')
+      run: |
+        # TODO: Install dependencies
+        echo "TODO: Install dependencies"
+      shell: powershell
+
+    # TODO: Add build dependencies for MacOSX
+    # NOTE: Need xcode and command line tools installed first
+    - name: Setup build dependencies (MacOSX only)
+      if: contains(inputs.goos, 'darwin')
+      run: |
+        # TODO: Install dependencies
+        echo "TODO: Install dependencies"
+      shell: bash
+      
+    - name: Download Go Dependencies
+      working-directory: ${{ inputs.working-directory }}
+      run: go mod download
+      shell: bash

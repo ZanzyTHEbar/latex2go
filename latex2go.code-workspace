@@ -1,0 +1,65 @@
+{
+    "folders": [
+        {
+            "name": "Root",
+            "path": "."
+        }
+    ],
+    "settings": {
+        "files.autoSave": "afterDelay",
+        "files.exclude": {
+            "**/.git": false,
+            "**/.env": false
+        },
+        "editor.foldingStrategy": "indentation",
+        "editor.formatOnSave": true,
+        "editor.quickSuggestions": {
+            "strings": true
+        },
+        "editor.codeActionsOnSave": {
+            "source.fixAll.eslint": "explicit"
+        },
+        "[jsonc]": {
+            "editor.defaultFormatter": "esbenp.prettier-vscode"
+        },
+        "[toml]": {
+            "editor.defaultFormatter": "tamasfe.even-better-toml"
+        },
+        "[shellscript]": {
+            "editor.defaultFormatter": "shakram02.bash-beautify"
+        },
+        "go.useLanguageServer": true,
+        "[go]": {
+            "editor.defaultFormatter": "golang.go"
+        },
+        "makefile.configureOnOpen": false,
+        "gopls": {
+            "build.directoryFilters": [
+                "-extras"
+            ]
+        },
+        "go.languageServerFlags": [
+            "-rpc.trace" // for more detailed output
+        ],
+        "extensions": {
+            "recommendations": [
+                "golang.go",
+                "esbenp.prettier-vscode",
+                "tamasfe.even-better-toml",
+                "vscode.makefile-tools"
+            ]
+        },
+        "cSpell.words": [
+            "birukmk",
+            "Debugf",
+            "gorm",
+            "Infof",
+            "labstack",
+            "logrus",
+            "pgtype",
+            "Subrouter",
+            "Warnf"
+        ],
+        "cSpell.language": "en,fr",
+    },
+}
