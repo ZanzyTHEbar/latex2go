@@ -1,10 +1,10 @@
 package cli
 
 import (
-"fmt"
+	"fmt"
 
-"github.com/placeholderuser/latex2go/internal/app" // For app.Config and app.LatexProvider
-"github.com/spf13/cobra"
+	"github.com/ZanzyTHEbar/latex2go/internal/app" // For app.Config and app.LatexProvider
+	"github.com/spf13/cobra"
 )
 
 // Adapter implements the app.LatexProvider interface using Cobra flags.

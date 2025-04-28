@@ -9,8 +9,8 @@ import (
 	"sort"
 	"strings"
 
-	// "github.com/placeholderuser/latex2go/internal/app" // REMOVED to break import cycle
-	internalast "github.com/placeholderuser/latex2go/internal/domain/ast" // Alias our internal AST
+	// "github.com/ZanzyTHEbar/latex2go/internal/app" // REMOVED to break import cycle
+	internalast "github.com/ZanzyTHEbar/latex2go/internal/domain/ast" // Alias our internal AST
 )
 
 // Generator converts our internal AST into Go code.

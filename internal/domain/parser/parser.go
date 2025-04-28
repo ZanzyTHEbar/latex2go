@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings" // Needed now for function names
 
-	internalast "github.com/placeholderuser/latex2go/internal/domain/ast"
+	internalast "github.com/ZanzyTHEbar/latex2go/internal/domain/ast"
 )
 
 // --- Operator Precedence ---

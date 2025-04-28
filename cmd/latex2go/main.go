@@ -6,13 +6,13 @@ import (
 	"os"
 
 	// Application core & domain
-	"github.com/placeholderuser/latex2go/internal/app"
-	"github.com/placeholderuser/latex2go/internal/domain/generator"
-	"github.com/placeholderuser/latex2go/internal/domain/parser"
+	"github.com/ZanzyTHEbar/latex2go/internal/app"
+	"github.com/ZanzyTHEbar/latex2go/internal/domain/generator"
+	"github.com/ZanzyTHEbar/latex2go/internal/domain/parser"
 
 	// Adapters
-	"github.com/placeholderuser/latex2go/internal/adapters/cli"
-	"github.com/placeholderuser/latex2go/internal/adapters/output"
+	"github.com/ZanzyTHEbar/latex2go/internal/adapters/cli"
+	"github.com/ZanzyTHEbar/latex2go/internal/adapters/output"
 
 	"github.com/spf13/cobra"
 )

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/placeholderuser/latex2go/internal/app" // For app.GoCodeWriter
+	"github.com/ZanzyTHEbar/latex2go/internal/app" // For app.GoCodeWriter
 )
 
 // --- Stdout Adapter ---

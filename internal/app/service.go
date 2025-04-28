@@ -1,11 +1,11 @@
 package app
 
 import (
-"fmt"
+	"fmt"
 
-// Import domain components (adjust paths/names if they differ)
-"github.com/placeholderuser/latex2go/internal/domain/generator"
-"github.com/placeholderuser/latex2go/internal/domain/parser"
+	// Import domain components (adjust paths/names if they differ)
+	"github.com/ZanzyTHEbar/latex2go/internal/domain/generator"
+	"github.com/ZanzyTHEbar/latex2go/internal/domain/parser"
 )
 
 // ApplicationService orchestrates the LaTeX to Go conversion process.
