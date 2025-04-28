@@ -21,11 +21,11 @@
     ```bash
     make build
     ```
-    This will create the executable `main` (or a platform-specific name if you modify the Makefile) in the project root.
+    This will create the executable `latex2go_linux_amd64` (or a platform-specific name) in the generated `bin` folder.
 
     Alternatively, build directly using Go:
     ```bash
-    go build -o latex2go ./cmd/latex2go/main.go
+    go build -o latex2go ./cmd/latex2go.go
     ```
 
 ## Usage
@@ -65,25 +65,9 @@ The project uses a standard Go project structure and a `Makefile` for common dev
 *   `make lint`: Run linters (`golangci-lint`) and `go vet`.
 *   `make tidy`: Tidy Go module dependencies.
 *   `make run`: Build and run the application (currently configured for a server, might need adjustment for CLI).
-*   `make docker-build`: Build a Docker image for the application.
-*   `make docker-run`: Run the application using Docker Compose.
-*   `make docker-down`: Stop the application running via Docker Compose.
+*   `make clean`: Clean up build artifacts.
 
-## Architecture
-
-The project follows a clean architecture pattern:
-
-*   **`cmd/`**: Contains the main application entry point (`latex2go`).
-*   **`internal/`**: Contains the core logic, separated into:
-    *   **`adapters/`**: Adapters for interacting with external systems (CLI, file output).
-    *   **`app/`**: Application service orchestrating the use cases.
-    *   **`domain/`**: Core domain logic (parsing LaTeX, generating Go code).
-*   **`pkg/`**: (If used) Shared libraries intended for external use.
 
 ## Contributing
 
 Contributions are welcome! Please feel free to submit pull requests or open issues.
-
-## License
-
-(Specify your license here, e.g., MIT License)
