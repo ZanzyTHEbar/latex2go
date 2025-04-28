@@ -26,9 +26,6 @@ endif
 # Binary names
 BINARY_BASE_NAME=latex2go
 BINARY_NAME := $(BINARY_BASE_NAME)_$(GOOS)_$(GOARCH)
-BINARY_NAME_SERVER=$(BINARY_NAME)_server
-BINARY_NAME_CLI=$(BINARY_NAME)_cli
-DOCKER_IMAGE=$(BINARY_NAME)
 
 # Binary path
 BINARY_PATH_PREFIX := ./bin
@@ -36,10 +33,6 @@ BINARY_PATH := $(BINARY_PATH_PREFIX)/$(GOOS)_$(GOARCH)
 
 # Module path
 MODULE_PATH := ./cmd/$(BINARY_BASE_NAME).go
-
-# Protocol buffer variables
-PROTO_DIR := .
-PROTO_GEN_DIR := pkgs/gen
 
 # Default target
 .DEFAULT_GOAL := build
@@ -52,7 +45,7 @@ all: test build
 
 build:
 	@echo "Building..."
-	@CGO_ENABLED=1 GOOS=linux go build -o main $(MODULE_PATH)
+	@CGO_ENABLED=1 GOOS=linux go build -o $(BINARY_NAME) $(MODULE_PATH)  
 
 test:
 	$(GOTEST) -v ./...
