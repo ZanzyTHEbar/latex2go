@@ -27,7 +27,7 @@ var precedences = map[TokenType]int{
 	CARET:    EXPONENT,
 	LPAREN:   CALL, // For grouped expressions like (a+b)
 	// LBRACE:   CALL, // No longer needed as infix/prefix operator itself
-	COMMAND:  CALL, // For commands like \sin x (though args usually use braces)
+	COMMAND: CALL, // For commands like \sin x (though args usually use braces)
 }
 
 // --- Parser Implementation ---
@@ -104,10 +104,10 @@ func (p *Parser) nextToken() {
 // ParseExpression is the main entry point for parsing the entire expression.
 // It replaces the old placeholder Parse method.
 func (p *Parser) ParseExpression() (internalast.Expr, error) {
-fmt.Printf("ParseExpression START. cur=%s peek=%s\n", p.curToken.Type, p.peekToken.Type) // DEBUG
-expr, err := p.parseExpression(LOWEST)
-if err != nil {
-// Add the error if it's not already captured (some funcs might add directly)
+	fmt.Printf("ParseExpression START. cur=%s peek=%s\n", p.curToken.Type, p.peekToken.Type) // DEBUG
+	expr, err := p.parseExpression(LOWEST)
+	if err != nil {
+		// Add the error if it's not already captured (some funcs might add directly)
 		// For simplicity, just return it here. Refine error aggregation if needed.
 		return nil, err
 	}
@@ -130,10 +130,10 @@ if err != nil {
 // --- Pratt Parsing Core ---
 
 func (p *Parser) parseExpression(precedence int) (internalast.Expr, error) {
-fmt.Printf(" -> parseExpression(%d). cur=%s peek=%s\n", precedence, p.curToken.Type, p.peekToken.Type) // DEBUG
-prefix := p.prefixParseFns[p.curToken.Type]
-if prefix == nil {
-err := fmt.Errorf("no prefix parse function found for token %s ('%s')", p.curToken.Type, p.curToken.Literal)
+	fmt.Printf(" -> parseExpression(%d). cur=%s peek=%s\n", precedence, p.curToken.Type, p.peekToken.Type) // DEBUG
+	prefix := p.prefixParseFns[p.curToken.Type]
+	if prefix == nil {
+		err := fmt.Errorf("no prefix parse function found for token %s ('%s')", p.curToken.Type, p.curToken.Literal)
 		p.addError(err.Error())
 		return nil, err
 	}
