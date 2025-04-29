@@ -2,18 +2,17 @@ package app
 
 import (
 	"fmt"
-
 	// Import domain components (adjust paths/names if they differ)
-	"github.com/ZanzyTHEbar/latex2go/internal/domain/generator"
-	"github.com/ZanzyTHEbar/latex2go/internal/domain/parser"
+	// "github.com/ZanzyTHEbar/latex2go/internal/domain/generator" // No longer needed directly
+	// "github.com/ZanzyTHEbar/latex2go/internal/domain/parser"    // No longer needed directly
 )
 
 // ApplicationService orchestrates the LaTeX to Go conversion process.
 type ApplicationService struct {
-	latexProvider LatexProvider        // Input port
-	codeWriter    GoCodeWriter         // Output port
-	parser        *parser.Parser       // Domain: LaTeX parser
-	generator     *generator.Generator // Domain: Go code generator
+	latexProvider LatexProvider // Input port
+	codeWriter    GoCodeWriter  // Output port
+	parser        Parser        // Domain Interface: LaTeX parser
+	generator     Generator     // Domain Interface: Go code generator
 }
 
 // NewApplicationService creates a new application service instance.
@@ -21,8 +20,8 @@ type ApplicationService struct {
 func NewApplicationService(
 	provider LatexProvider,
 	writer GoCodeWriter,
-	parser *parser.Parser,
-	generator *generator.Generator,
+	parser Parser, // Use interface
+	generator Generator, // Use interface
 ) *ApplicationService {
 	return &ApplicationService{
 		latexProvider: provider,

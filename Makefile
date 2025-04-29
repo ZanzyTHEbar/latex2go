@@ -53,8 +53,8 @@ test:
 	$(GOTEST) -v ./...
 
 run: build
-	@echo "Running $(BINARY_NAME)... (Example: $(BINARY_PATH)/$(BINARY_NAME) --latex 'a+b')"
-	@$(BINARY_PATH)/$(BINARY_NAME) # Add arguments here if needed, e.g., --latex 'x^2'
+	# Execute the built CLI binary
+	$(BINARY_PATH)/$(BINARY_NAME) -i "x^2 + 1" # Example usage
 
 deps:
 	$(GOMOD) download

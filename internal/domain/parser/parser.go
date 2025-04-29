@@ -3,7 +3,7 @@ package parser
 import (
 	"fmt"
 	"strconv"
-	"strings" // Needed now for function names
+	"strings"
 
 	internalast "github.com/ZanzyTHEbar/latex2go/internal/domain/ast"
 )
@@ -25,20 +25,17 @@ var precedences = map[TokenType]int{
 	ASTERISK: PRODUCT,
 	SLASH:    PRODUCT,
 	CARET:    EXPONENT,
-	LPAREN:   CALL, // For grouped expressions like (a+b)
-	// LBRACE:   CALL, // No longer needed as infix/prefix operator itself
-	COMMAND: CALL, // For commands like \sin x (though args usually use braces)
+	LPAREN:   CALL,
+	COMMAND:  CALL,
 }
 
 // --- Parser Implementation ---
 
-// Function types for Pratt parsing
 type (
 	prefixParseFn func() (internalast.Expr, error)
 	infixParseFn  func(internalast.Expr) (internalast.Expr, error)
 )
 
-// Parser holds the lexer, tokens, errors, and parsing functions.
 type Parser struct {
 	l      *Lexer
 	errors []string
@@ -50,13 +47,10 @@ type Parser struct {
 	infixParseFns  map[TokenType]infixParseFn
 }
 
-// NewParser creates a new parser instance (used by the service).
-// The actual lexer/state is created within the Parse method.
 func NewParser() *Parser {
 	return &Parser{}
 }
 
-// newStatefulParser creates a new stateful Parser instance for a specific parsing run.
 func newStatefulParser(l *Lexer) *Parser {
 	p := &Parser{
 		l:              l,
@@ -65,28 +59,24 @@ func newStatefulParser(l *Lexer) *Parser {
 		infixParseFns:  make(map[TokenType]infixParseFn),
 	}
 
-	// Register parsing functions
 	p.registerPrefix(IDENT, p.parseIdentifier)
 	p.registerPrefix(NUMBER, p.parseNumberLiteral)
 	p.registerPrefix(LPAREN, p.parseGroupedExpression)
-	p.registerPrefix(MINUS, p.parsePrefixExpression)    // For unary minus
-	p.registerPrefix(COMMAND, p.parseCommandExpression) // For \sqrt, \frac, etc.
+	p.registerPrefix(MINUS, p.parsePrefixExpression)
+	p.registerPrefix(COMMAND, p.parseCommandExpression)
 
 	p.registerInfix(PLUS, p.parseInfixExpression)
 	p.registerInfix(MINUS, p.parseInfixExpression)
 	p.registerInfix(ASTERISK, p.parseInfixExpression)
 	p.registerInfix(SLASH, p.parseInfixExpression)
 	p.registerInfix(CARET, p.parseInfixExpression)
-	// p.registerInfix(LBRACE, p.parseCommandArguments) // REMOVED - Command args handled in parseCommandExpression
 
-	// Read two tokens, so curToken and peekToken are both set
 	p.nextToken()
 	p.nextToken()
 
 	return p
 }
 
-// Errors returns any parsing errors encountered.
 func (p *Parser) Errors() []string {
 	return p.errors
 }
@@ -101,63 +91,46 @@ func (p *Parser) nextToken() {
 	p.peekToken = p.l.NextToken()
 }
 
-// ParseExpression is the main entry point for parsing the entire expression.
-// It replaces the old placeholder Parse method.
 func (p *Parser) ParseExpression() (internalast.Expr, error) {
-	fmt.Printf("ParseExpression START. cur=%s peek=%s\n", p.curToken.Type, p.peekToken.Type) // DEBUG
 	expr, err := p.parseExpression(LOWEST)
 	if err != nil {
-		// Add the error if it's not already captured (some funcs might add directly)
-		// For simplicity, just return it here. Refine error aggregation if needed.
 		return nil, err
 	}
-
-	// Check if any errors were collected during parsing
 	if len(p.errors) > 0 {
-		// Combine errors into a single error message
 		return nil, fmt.Errorf("parsing failed:\n\t%s", strings.Join(p.errors, "\n\t"))
 	}
-
-	// Ensure we consumed the whole input (optional, depends on requirements)
 	if p.peekToken.Type != EOF {
-		p.addError("unexpected token '%s' after expression", p.peekToken.Literal)
-		// Use constant format string for fmt.Errorf
-		return nil, fmt.Errorf("%s", p.errors[len(p.errors)-1]) // Return the last error
+		p.peekError(EOF) // Expected EOF, got something else
+		if len(p.errors) > 0 {
+			return nil, fmt.Errorf("parsing failed:\n\t%s", strings.Join(p.errors, "\n\t"))
+		}
+		return nil, fmt.Errorf("unexpected token '%s' after expression", p.peekToken.Literal)
 	}
-
 	return expr, nil
 }
 
-// --- Pratt Parsing Core ---
-
 func (p *Parser) parseExpression(precedence int) (internalast.Expr, error) {
-	fmt.Printf(" -> parseExpression(%d). cur=%s peek=%s\n", precedence, p.curToken.Type, p.peekToken.Type) // DEBUG
 	prefix := p.prefixParseFns[p.curToken.Type]
 	if prefix == nil {
 		err := fmt.Errorf("no prefix parse function found for token %s ('%s')", p.curToken.Type, p.curToken.Literal)
-		p.addError("%s", err.Error()) // Use constant format string
+		p.addError("%s", err.Error())
 		return nil, err
 	}
 	leftExp, err := prefix()
 	if err != nil {
-		return nil, err // Error already added by prefix func or above
+		return nil, err
 	}
-
 	for p.peekToken.Type != EOF && precedence < p.peekPrecedence() {
 		infix := p.infixParseFns[p.peekToken.Type]
 		if infix == nil {
-			// Not an infix operator we handle, or end of this precedence level
 			return leftExp, nil
 		}
-
-		p.nextToken() // Consume the infix operator
-
-		leftExp, err = infix(leftExp) // Pass the left expression to the infix function
+		p.nextToken()
+		leftExp, err = infix(leftExp)
 		if err != nil {
-			return nil, err // Error added by infix func
+			return nil, err
 		}
 	}
-
 	return leftExp, nil
 }
 
@@ -186,7 +159,6 @@ func (p *Parser) registerInfix(tokenType TokenType, fn infixParseFn) {
 // --- Parsing Functions ---
 
 func (p *Parser) parseIdentifier() (internalast.Expr, error) {
-	// Assumes single-letter variables for now, as per lexer
 	return &internalast.Variable{Name: p.curToken.Literal}, nil
 }
 
@@ -194,51 +166,28 @@ func (p *Parser) parseNumberLiteral() (internalast.Expr, error) {
 	val, err := strconv.ParseFloat(p.curToken.Literal, 64)
 	if err != nil {
 		err = fmt.Errorf("could not parse '%s' as float: %w", p.curToken.Literal, err)
-		p.addError("%s", err.Error()) // Use constant format string
+		p.addError("%s", err.Error())
 		return nil, err
 	}
 	return &internalast.NumberLiteral{Value: val}, nil
 }
 
 func (p *Parser) parsePrefixExpression() (internalast.Expr, error) {
-	// Currently only handles unary minus
 	if p.curToken.Type != MINUS {
 		err := fmt.Errorf("expected prefix operator (e.g., '-'), got %s", p.curToken.Type)
-		p.addError("%s", err.Error()) // Use constant format string
+		p.addError("%s", err.Error())
 		return nil, err
 	}
-
-	// Treat unary minus as multiplication by -1 for simplicity in AST/Generator
-	// Alternatively, add UnaryExpr to internal AST
-	p.nextToken() // Consume the '-'
+	p.nextToken()
 	rightExpr, err := p.parseExpression(PREFIX)
 	if err != nil {
 		return nil, err
 	}
-
 	return &internalast.BinaryExpr{
 		Op:    "*",
 		Left:  &internalast.NumberLiteral{Value: -1.0},
 		Right: rightExpr,
 	}, nil
-
-	// // --- Alternative: Using UnaryExpr ---
-	// // Requires adding UnaryExpr struct to internalast
-	//
-	//	expr := &internalast.UnaryExpr{
-	//	    Operator: p.curToken.Literal,
-	//	}
-	//
-	// p.nextToken() // Consume the operator
-	// var err error
-	// expr.Right, err = p.parseExpression(PREFIX)
-	//
-	//	if err != nil {
-	//	    return nil, err
-	//	}
-	//
-	// return expr, nil
-	// // --- End Alternative ---
 }
 
 func (p *Parser) parseInfixExpression(left internalast.Expr) (internalast.Expr, error) {
@@ -247,9 +196,17 @@ func (p *Parser) parseInfixExpression(left internalast.Expr) (internalast.Expr, 
 		Left: left,
 	}
 	precedence := p.curPrecedence()
-	p.nextToken() // Consume the operator
+	p.nextToken()
 	var err error
-	expr.Right, err = p.parseExpression(precedence)
+	
+	// Special handling for ^ operator to make it right-associative
+	if expr.Op == "^" {
+		// Pass precedence-1 to give right-side expressions higher precedence
+		expr.Right, err = p.parseExpression(precedence - 1)
+	} else {
+		expr.Right, err = p.parseExpression(precedence)
+	}
+	
 	if err != nil {
 		return nil, err
 	}
@@ -257,72 +214,159 @@ func (p *Parser) parseInfixExpression(left internalast.Expr) (internalast.Expr, 
 }
 
 func (p *Parser) parseGroupedExpression() (internalast.Expr, error) {
-	p.nextToken() // Consume '('
+	p.nextToken()
 	expr, err := p.parseExpression(LOWEST)
 	if err != nil {
 		return nil, err
 	}
 	if !p.expectPeek(RPAREN) {
-		// Error already added by expectPeek
 		return nil, fmt.Errorf("missing closing parenthesis")
 	}
 	return expr, nil
 }
 
-// parseCommandExpression handles commands like \sqrt{x}, \frac{a}{b}, etc.
-// It assumes arguments are enclosed in braces {} immediately following the command.
+// --- Enhanced parseCommandExpression for \sum and \prod ---
 func (p *Parser) parseCommandExpression() (internalast.Expr, error) {
-	// Current token is COMMAND
 	funcName := p.curToken.Literal
+
+	// Special handling for \sum and \prod
+	if funcName == "sum" || funcName == "prod" {
+		isProduct := funcName == "prod"
+
+		// Expect subscript (lower bound): _{i=1}
+		if p.peekToken.Type != UNDERSCORE {
+			p.addError("expected '_' for lower bound after \\%s", funcName)
+			return nil, fmt.Errorf("expected '_' for lower bound after \\%s", funcName)
+		}
+		p.nextToken() // consume '_'
+
+		if p.peekToken.Type != LBRACE {
+			p.addError("expected '{' after '_' in \\%s", funcName)
+			return nil, fmt.Errorf("expected '{' after '_' in \\%s", funcName)
+		}
+		p.nextToken() // consume '{'
+
+		p.nextToken() // move to variable
+		varName := ""
+		if p.curToken.Type == IDENT {
+			varName = p.curToken.Literal
+		} else {
+			p.addError("expected identifier for summation variable in \\%s", funcName)
+			return nil, fmt.Errorf("expected identifier for summation variable in \\%s", funcName)
+		}
+		p.nextToken() // move to '='
+		if p.curToken.Type != EQUALS {
+			p.addError("expected '=' after variable in \\%s lower bound", funcName)
+			return nil, fmt.Errorf("expected '=' after variable in \\%s lower bound", funcName)
+		}
+		p.nextToken() // move to lower bound expr
+		lower, err := p.parseExpression(LOWEST)
+		if err != nil {
+			return nil, err
+		}
+		// After parsing the lower bound, expect to see RBRACE as the next token
+		if p.peekToken.Type != RBRACE {
+			p.addError("expected '}' after lower bound in \\%s", funcName)
+			return nil, fmt.Errorf("expected '}' after lower bound in \\%s", funcName)
+		}
+		p.nextToken() // consume RBRACE
+
+		// Expect superscript (upper bound): ^{n}
+		if p.peekToken.Type != CARET {
+			p.addError("expected '^' for upper bound after lower bound in \\%s", funcName)
+			return nil, fmt.Errorf("expected '^' for upper bound after lower bound in \\%s", funcName)
+		}
+		p.nextToken() // consume '}'
+		p.nextToken() // consume '^'
+		if p.curToken.Type != LBRACE {
+			p.addError("expected '{' after '^' in \\%s", funcName)
+			return nil, fmt.Errorf("expected '{' after '^' in \\%s", funcName)
+		}
+		p.nextToken() // move to upper bound expr
+		upper, err := p.parseExpression(LOWEST)
+		if err != nil {
+			return nil, err
+		}
+		// After parsing the upper bound, expect to see RBRACE as the next token
+		if p.peekToken.Type != RBRACE {
+			p.addError("expected '}' after upper bound in \\%s", funcName)
+			return nil, fmt.Errorf("expected '}' after upper bound in \\%s", funcName)
+		}
+		p.nextToken() // consume RBRACE
+		p.nextToken() // advance to body token
+
+		body, err := p.parseExpression(LOWEST)
+		if err != nil {
+			return nil, err
+		}
+
+		return &internalast.SumExpr{
+			IsProduct: isProduct,
+			Var:       varName,
+			Lower:     lower,
+			Upper:     upper,
+			Body:      body,
+		}, nil
+	}
+
 	args := []internalast.Expr{}
-
-	// Loop while the *next* token is an opening brace for an argument
 	for p.peekToken.Type == LBRACE {
-		p.nextToken() // Consume COMMAND token (first iteration) or RBRACE (subsequent)
-		// Now curToken is LBRACE.
-
-		// We are at LBRACE, consume it to get to the argument start
-		p.nextToken() // Consume LBRACE. curToken is now first token of arg.
-
+		p.nextToken() // consume LBRACE
+		// Check for empty argument: {} immediately after command
+		if p.peekToken.Type == RBRACE {
+			err := fmt.Errorf("argument expression cannot be empty inside {} for command \\%s", funcName)
+			p.addError("%s", err.Error())
+			return nil, err
+		}
+		p.nextToken() // consume token after LBRACE (start of expression)
 		argExpr, err := p.parseExpression(LOWEST)
 		if err != nil {
 			return nil, err
 		}
 		args = append(args, argExpr)
-
-		// After parseExpression, curToken is the last token of the arg.
-		// We expect peekToken to be RBRACE.
 		if p.peekToken.Type != RBRACE {
+			if p.peekToken.Type == EOF {
+				// Use a more specific error message for EOF
+				err := fmt.Errorf("missing '}' after argument for command \\%s", funcName)
+				p.addError("%s", err.Error())
+				return nil, err
+			}
 			p.peekError(RBRACE)
 			return nil, fmt.Errorf("missing '}' after argument for command \\%s", funcName)
 		}
-		p.nextToken() // Consume RBRACE. curToken is now RBRACE.
-		// The loop condition checks peekToken for the next LBRACE.
+		p.nextToken() // consume RBRACE
 	}
 
-	// Check if any arguments were parsed
-	if len(args) == 0 {
-		// Handle commands without braces if needed (e.g., \sin x) - currently unsupported
+	if len(args) == 0 && funcName != "sum" && funcName != "prod" { // Allow sum/prod to have no {} args initially
 		err := fmt.Errorf("expected '{' arguments after command '\\%s', got %s", funcName, p.peekToken.Type)
-		p.addError("%s", err.Error()) // Use constant format string
+		p.addError("%s", err.Error())
 		return nil, err
 	}
 
-	// --- Argument Count Validation ---
-	requiredArgs := -1 // -1 means variable or unknown
+	// Check if we have the required number of arguments
+	requiredArgs := -1
 	switch strings.ToLower(funcName) {
 	case "frac":
 		requiredArgs = 2
-	case "sqrt", "sin", "cos", "tan": // Add other single-arg functions here
+	case "sqrt", "sin", "cos", "tan":
 		requiredArgs = 1
 	}
 
 	if requiredArgs != -1 && len(args) != requiredArgs {
 		err := fmt.Errorf("\\%s requires %d argument(s), got %d", funcName, requiredArgs, len(args))
-		p.addError("%s", err.Error()) // Use constant format string
+		p.addError("%s", err.Error())
 		return nil, err
 	}
-	// --- End Validation ---
+
+	// Check for unexpected tokens after the function and its arguments
+	if p.peekToken.Type != EOF && p.peekToken.Type != RPAREN && 
+	   !(p.peekToken.Type == PLUS || p.peekToken.Type == MINUS || 
+	     p.peekToken.Type == ASTERISK || p.peekToken.Type == SLASH || 
+	     p.peekToken.Type == CARET) {
+		err := fmt.Errorf("unexpected token '%s' after expression", p.peekToken.Type)
+		p.addError("%s", err.Error())
+		return nil, err
+	}
 
 	return &internalast.FuncCall{
 		FuncName: funcName,
@@ -330,9 +374,6 @@ func (p *Parser) parseCommandExpression() (internalast.Expr, error) {
 	}, nil
 }
 
-// parseCommandArguments removed, logic integrated into parseCommandExpression
-
-// expectPeek checks the type of the next token. If it matches, advances; otherwise adds error.
 func (p *Parser) expectPeek(t TokenType) bool {
 	if p.peekToken.Type == t {
 		p.nextToken()
@@ -342,50 +383,22 @@ func (p *Parser) expectPeek(t TokenType) bool {
 	return false
 }
 
-// expectCur checks if the current token matches the expected type.
-func (p *Parser) expectCur(t TokenType) bool {
-	if p.curToken.Type == t {
-		return true
-	}
-	p.curError(t)
-	return false
-}
-
 func (p *Parser) peekError(t TokenType) {
-	p.addError("expected next token to be %s, got %s instead", t, p.peekToken.Type)
+	p.addError("expected next token to be %s, got %s ('%s') instead", t, p.peekToken.Type, p.peekToken.Literal)
 }
 
-func (p *Parser) curError(t TokenType) {
-	p.addError("expected current token to be %s, got %s instead", t, p.curToken.Type)
-}
-
-// --- Replace old placeholder methods ---
-
-// Parse is the main entry point called by the service.
-// It initializes the lexer and a stateful parser instance for this specific run,
-// then calls ParseExpression on the stateful instance.
 func (p *Parser) Parse(latexString string) (internalast.Expr, error) {
 	l := NewLexer(latexString)
-	statefulParser := newStatefulParser(l) // Create a new stateful parser instance
+	statefulParser := newStatefulParser(l)
 	expr, err := statefulParser.ParseExpression()
 	if err != nil {
-		// Combine parsing errors if any were collected
 		if len(statefulParser.errors) > 0 {
 			return nil, fmt.Errorf("parsing failed:\n\t%s", strings.Join(statefulParser.errors, "\n\t"))
 		}
-		// Otherwise, return the direct error from ParseExpression
 		return nil, err
 	}
-	// Check for errors even if ParseExpression didn't return one directly
 	if len(statefulParser.errors) > 0 {
 		return nil, fmt.Errorf("parsing failed:\n\t%s", strings.Join(statefulParser.errors, "\n\t"))
 	}
 	return expr, nil
 }
-
-// translate is no longer needed with a custom parser. Remove it.
-/*
-func (p *Parser) translate(node interface{}) (internalast.Node, error) {
-    // ... old placeholder code ...
-}
-*/

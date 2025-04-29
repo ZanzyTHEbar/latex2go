@@ -2,7 +2,6 @@ package parser
 
 import (
 	"fmt"
-	// "strings" // Not used in lexer
 	"unicode"
 	"unicode/utf8"
 )
@@ -32,12 +31,14 @@ const (
 	ASTERISK // *
 	SLASH    // /
 	CARET    // ^
+	EQUALS   // =
 
 	// Delimiters
-	LPAREN // (
-	RPAREN // )
-	LBRACE // {
-	RBRACE // }
+	LPAREN     // (
+	RPAREN     // )
+	LBRACE     // {
+	RBRACE     // }
+	UNDERSCORE // _
 
 	// LaTeX Commands (treated specially)
 	COMMAND // e.g., \frac, \sqrt, \sin
@@ -66,12 +67,11 @@ func (l *Lexer) readChar() {
 		var size int
 		l.ch, size = utf8.DecodeRuneInString(l.input[l.readPosition:])
 		if l.ch == utf8.RuneError && size == 1 {
-			// Handle potential invalid UTF-8 sequence, treat as illegal character for now
-			l.ch = '?' // Or some other indicator
+			l.ch = '?'
 		}
 	}
 	l.position = l.readPosition
-	l.readPosition += utf8.RuneLen(l.ch) // Use RuneLen for UTF-8 compatibility
+	l.readPosition += utf8.RuneLen(l.ch)
 }
 
 // peekChar looks ahead at the next character without consuming it.
@@ -102,6 +102,10 @@ func (l *Lexer) NextToken() Token {
 		tok = newToken(SLASH, l.ch)
 	case '^':
 		tok = newToken(CARET, l.ch)
+	case '=':
+		tok = newToken(EQUALS, l.ch)
+	case '_':
+		tok = newToken(UNDERSCORE, l.ch)
 	case '(':
 		tok = newToken(LPAREN, l.ch)
 	case ')':
@@ -110,32 +114,29 @@ func (l *Lexer) NextToken() Token {
 		tok = newToken(LBRACE, l.ch)
 	case '}':
 		tok = newToken(RBRACE, l.ch)
-	case '\\': // Start of a LaTeX command
+	case '\\':
 		tok.Type = COMMAND
 		tok.Literal = l.readCommand()
-		tok.Pos = l.position // readCommand advances position, so capture start pos
-		return tok           // readCommand already called readChar()
+		tok.Pos = l.position
+		return tok
 	case 0:
 		tok.Literal = ""
 		tok.Type = EOF
 	default:
 		if isLetter(l.ch) {
-			// Could be a variable or part of a command name if not preceded by \
-			// For simplicity here, treat standalone letters as IDENTs (variables)
 			tok.Literal = l.readIdentifier()
-			tok.Type = IDENT // Assume it's a variable for now
-			// TODO: Distinguish multi-char idents if needed later
-			return tok // readIdentifier already called readChar()
+			tok.Type = IDENT
+			return tok
 		} else if isDigit(l.ch) {
 			tok.Type = NUMBER
 			tok.Literal = l.readNumber()
-			return tok // readNumber already called readChar()
+			return tok
 		} else {
 			tok = newToken(ILLEGAL, l.ch)
 		}
 	}
 
-	l.readChar() // Move to the next character
+	l.readChar()
 	return tok
 }
 
@@ -146,7 +147,6 @@ func (l *Lexer) skipWhitespace() {
 	}
 }
 
-// readIdentifier reads an identifier (sequence of letters) and advances the lexer's position.
 func (l *Lexer) readIdentifier() string {
 	position := l.position
 	for isLetter(l.ch) {
@@ -155,25 +155,22 @@ func (l *Lexer) readIdentifier() string {
 	return l.input[position:l.position]
 }
 
-// readCommand reads a LaTeX command (sequence of letters after \)
 func (l *Lexer) readCommand() string {
-	position := l.position + 1 // Skip the '\'
-	l.readChar()               // Consume the '\'
+	position := l.position + 1
+	l.readChar()
 	for isLetter(l.ch) {
 		l.readChar()
 	}
 	return l.input[position:l.position]
 }
 
-// readNumber reads a number (integer or float) and advances the lexer's position.
 func (l *Lexer) readNumber() string {
 	position := l.position
 	hasDecimal := false
 	for isDigit(l.ch) || (l.ch == '.' && !hasDecimal) {
 		if l.ch == '.' {
-			// Check if the next char is also a digit to avoid lone '.'
 			if !isDigit(l.peekChar()) {
-				break // Treat lone '.' as illegal or handle differently if needed
+				break
 			}
 			hasDecimal = true
 		}
@@ -182,23 +179,18 @@ func (l *Lexer) readNumber() string {
 	return l.input[position:l.position]
 }
 
-// isLetter checks if a rune is a letter (basic ASCII check for simplicity).
-// Extend this if full Unicode letters are needed.
 func isLetter(ch rune) bool {
 	return 'a' <= ch && ch <= 'z' || 'A' <= ch && ch <= 'Z'
 }
 
-// isDigit checks if a rune is a digit (basic ASCII check).
 func isDigit(ch rune) bool {
 	return '0' <= ch && ch <= '9'
 }
 
-// newToken creates a new Token instance.
 func newToken(tokenType TokenType, ch rune) Token {
 	return Token{Type: tokenType, Literal: string(ch)}
 }
 
-// For debugging/testing
 func (t TokenType) String() string {
 	switch t {
 	case ILLEGAL:
@@ -219,6 +211,10 @@ func (t TokenType) String() string {
 		return "SLASH"
 	case CARET:
 		return "CARET"
+	case EQUALS:
+		return "EQUALS"
+	case UNDERSCORE:
+		return "UNDERSCORE"
 	case LPAREN:
 		return "LPAREN"
 	case RPAREN:

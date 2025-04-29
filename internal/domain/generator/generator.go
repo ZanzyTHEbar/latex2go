@@ -1,213 +1,232 @@
 package generator
 
 import (
-	"bytes"
 	"fmt"
-	goast "go/ast" // Alias standard Go AST package
 	"go/format"
-	"go/token"
 	"sort"
 	"strings"
 
-	// "github.com/ZanzyTHEbar/latex2go/internal/app" // REMOVED to break import cycle
-	internalast "github.com/ZanzyTHEbar/latex2go/internal/domain/ast" // Alias our internal AST
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
+
+	"github.com/ZanzyTHEbar/latex2go/internal/domain/ast"
 )
 
-// Generator converts our internal AST into Go code.
-type Generator struct {
-	// Potentially add configuration or state if needed later
-}
+// Generator converts internal AST Expr into Go code.
+type Generator struct{}
 
-// NewGenerator creates a new code generator.
+// NewGenerator creates a fresh Generator.
 func NewGenerator() *Generator {
 	return &Generator{}
 }
 
-// Generate takes the root of our internal expression AST and configuration parameters,
-// and returns a string containing the formatted Go code.
-func (g *Generator) Generate(root internalast.Expr, packageName, funcName string) (string, error) {
-	// 1. Collect variables from the AST to determine function parameters.
+// generateExpr renders an AST expression or loop into Go code snippet.
+// It also returns a boolean indicating if the generated code requires the "math" package.
+func (g *Generator) generateExpr(e ast.Expr) (string, bool) {
+	switch node := e.(type) {
+	case *ast.NumberLiteral:
+		return fmt.Sprintf("%g", node.Value), false
+	case *ast.Variable:
+		return node.Name, false
+	case *ast.BinaryExpr:
+		leftCode, leftNeedsMath := g.generateExpr(node.Left)
+		rightCode, rightNeedsMath := g.generateExpr(node.Right)
+		needsMath := leftNeedsMath || rightNeedsMath
+		if node.Op == "^" {
+			return fmt.Sprintf("math.Pow(%s, %s)", leftCode, rightCode), true // math.Pow requires math
+		}
+		return fmt.Sprintf("%s %s %s", leftCode, node.Op, rightCode), needsMath
+	case *ast.FuncCall:
+		// Special handling for frac
+		if node.FuncName == "frac" {
+			if len(node.Args) != 2 {
+				// This should ideally be caught by the parser, but double-check here.
+				return "", false // Or return an error
+			}
+			numeratorCode, numNeedsMath := g.generateExpr(node.Args[0])
+			denominatorCode, denNeedsMath := g.generateExpr(node.Args[1])
+			return fmt.Sprintf("(%s) / (%s)", numeratorCode, denominatorCode), numNeedsMath || denNeedsMath // Use parentheses for safety
+		}
+
+		// General function call handling (maps to math package)
+		args := make([]string, len(node.Args))
+		needsMath := false
+		for i, arg := range node.Args {
+			argCode, argNeedsMath := g.generateExpr(arg)
+			args[i] = argCode
+			needsMath = needsMath || argNeedsMath
+		}
+
+		// Check if the function is supported in the math package
+		goFuncName := cases.Title(language.English, cases.Compact).String(node.FuncName)
+		supportedMathFuncs := map[string]bool{"Sqrt": true, "Sin": true, "Cos": true, "Tan": true, "Pow": true /* Add others as needed */} // Pow handled by BinaryExpr ^
+		if _, supported := supportedMathFuncs[goFuncName]; !supported && node.FuncName != "pow" { // Allow pow implicitly via ^
+			// Return an error instead of generating invalid code
+			// Note: We don't return the error directly from here, let Generate handle it.
+			// For now, return empty string and signal no math needed, Generate will catch the error later.
+			// A better approach might be to return an error tuple: (string, bool, error)
+			return fmt.Sprintf("/* unsupported function: %s */", node.FuncName), false
+		}
+
+		// Assume math needed for all other supported func calls
+		return fmt.Sprintf("math.%s(%s)",
+			goFuncName,
+			strings.Join(args, ", "),
+		), true
+	case *ast.SumExpr:
+		// Summation or product loop
+		idx := node.Var
+		lowCode, lowNeedsMath := g.generateExpr(node.Lower)
+		upCode, upNeedsMath := g.generateExpr(node.Upper)
+		bodyCode, bodyNeedsMath := g.generateExpr(node.Body)
+		needsMath := lowNeedsMath || upNeedsMath || bodyNeedsMath
+
+		initVal, op := "0.0", "+" // Use float literal for init
+		if node.IsProduct {
+			initVal, op = "1.0", "*"
+		}
+		// Ensure loop bounds are treated as floats for comparison if they are variables
+		// Note: This assumes loop variables are integers, which might be fragile.
+		// A more robust solution might involve type analysis or clearer loop semantics.
+		loop := []string{
+			fmt.Sprintf("result := %s", initVal),
+			// Using float64 for loop counter and bounds for consistency with math ops
+			fmt.Sprintf("for %s := float64(int(%s)); %s <= float64(int(%s)); %s++ {", idx, lowCode, idx, upCode, idx),
+			fmt.Sprintf("    result = result %s (%s)", op, bodyCode), // Add parentheses around body for safety
+			"}",
+			"return result", // Return result directly from loop structure
+		}
+		return strings.Join(loop, "\n"), needsMath
+	default:
+		return "", false
+	}
+}
+
+// Generate produces full Go source code for the given AST root, package, and function.
+func (g *Generator) Generate(root ast.Expr, pkgName, funcName string) (string, error) {
+	// Generate the core expression/loop code and check if math is needed
+	codeBody, needsMath := g.generateExpr(root)
+
+	// Check for unsupported function placeholder generated by generateExpr
+	if strings.HasPrefix(codeBody, "/* unsupported function:") {
+		var unsupportedFuncName string
+		fmt.Sscanf(codeBody, "/* unsupported function: %s */", &unsupportedFuncName)
+		return "", fmt.Errorf("unsupported LaTeX function: %s", unsupportedFuncName)
+	}
+
+	mathImport := ""
+	if needsMath {
+		mathImport = "\"math\""
+	}
+
+	var header string
+	if mathImport != "" {
+		header = fmt.Sprintf("package %s\n\nimport %s\n\n", pkgName, mathImport)
+	} else {
+		header = fmt.Sprintf("package %s\n\n", pkgName)
+	}
+
+	// Collect variables from AST
 	vars := make(map[string]struct{})
-	collectVariables(root, vars)
-	sortedVars := make([]string, 0, len(vars))
+	var collect func(e ast.Expr, loopVar string) // Pass loopVar down
+	collect = func(e ast.Expr, loopVar string) {
+		if e == nil { // Add nil check for safety
+			return
+		}
+		switch n := e.(type) {
+		case *ast.Variable:
+			// Exclude loop variable from parameters
+			if n.Name != loopVar {
+				vars[sanitizeVariableName(n.Name)] = struct{}{}
+			}
+		case *ast.BinaryExpr:
+			collect(n.Left, loopVar)
+			collect(n.Right, loopVar)
+		case *ast.FuncCall:
+			// Don't collect from inside frac if it was handled specially
+			if n.FuncName != "frac" {
+				for _, a := range n.Args {
+					collect(a, loopVar)
+				}
+			} else {
+				// Need to collect from frac args manually if handled specially
+				if len(n.Args) == 2 {
+					collect(n.Args[0], loopVar)
+					collect(n.Args[1], loopVar)
+				}
+			}
+		case *ast.SumExpr:
+			// Collect from bounds, passing the current loopVar (if any)
+			collect(n.Lower, loopVar)
+			collect(n.Upper, loopVar)
+			// Collect from body, passing the *new* loopVar for this SumExpr
+			collect(n.Body, n.Var)
+		}
+	}
+	// ast.SetParents(root) // Removed - Parent pointers not used/available
+	collect(root, "") // Start collection with no loop variable context
+
+	// Build sorted parameter list
+	names := make([]string, 0, len(vars))
 	for v := range vars {
-		sortedVars = append(sortedVars, v)
+		names = append(names, v)
 	}
-	sort.Strings(sortedVars) // Ensure consistent parameter order
+	sort.Strings(names)
+	params := ""
+	if len(names) > 0 {
+		parts := make([]string, len(names))
+		for i, v := range names { // Corrected loop syntax
+			parts[i] = fmt.Sprintf("%s float64", v) // Use sanitized name
+		}
+		params = strings.Join(parts, ", ")
+	}
 
-	// 2. Build the Go AST expression tree from our internal AST.
-	goExpr, err := g.buildGoExpr(root)
+	// Assemble the function body
+	var funcBody string
+	if _, ok := root.(*ast.SumExpr); ok {
+		// For SumExpr, the generateExpr already returns the full loop and return statement
+		indented := indent(codeBody, "\t")
+		funcBody = fmt.Sprintf("func %s(%s) float64 {\n%s\n}", funcName, params, indented)
+	} else {
+		// For simple expressions, add the return statement
+		funcBody = fmt.Sprintf("func %s(%s) float64 {\n\treturn %s\n}", funcName, params, codeBody)
+	}
+
+	src := header + funcBody
+
+	// Format with go/format
+	formatted, err := format.Source([]byte(src))
 	if err != nil {
-		return "", fmt.Errorf("failed to build Go expression AST: %w", err)
+		// If formatting fails, return the unformatted source and the error for debugging
+		return src, fmt.Errorf("failed to format generated code: %w\nSource:\n%s", err, src)
 	}
-
-	// 3. Create function parameters.
-	params := &goast.FieldList{List: make([]*goast.Field, len(sortedVars))}
-	for i, varName := range sortedVars {
-		params.List[i] = &goast.Field{
-			Names: []*goast.Ident{goast.NewIdent(varName)},
-			Type:  goast.NewIdent("float64"), // Assume float64 for all variables
-		}
-	}
-
-	// 4. Create function return type.
-	results := &goast.FieldList{
-		List: []*goast.Field{
-			{
-				Type: goast.NewIdent("float64"), // Assume float64 return type
-			},
-		},
-	}
-
-	// 5. Create the function body with a return statement.
-	funcBody := &goast.BlockStmt{
-		List: []goast.Stmt{
-			&goast.ReturnStmt{Results: []goast.Expr{goExpr}},
-		},
-	}
-
-	// 6. Create the function declaration.
-	funcDecl := &goast.FuncDecl{
-		Name: goast.NewIdent(funcName), // Use funcName argument
-		Type: &goast.FuncType{
-			Params:  params,
-			Results: results,
-		},
-		Body: funcBody,
-	}
-
-	// 7. Create the file AST.
-	file := &goast.File{
-		Name: goast.NewIdent(packageName), // Use packageName argument
-		Decls: []goast.Decl{
-			// Add import declaration for "math" if needed (check during buildGoExpr)
-			&goast.GenDecl{
-				Tok: token.IMPORT,
-				Specs: []goast.Spec{
-					&goast.ImportSpec{Path: &goast.BasicLit{Kind: token.STRING, Value: `"math"`}},
-				},
-			},
-			funcDecl,
-		},
-	}
-
-	// 8. Format the Go AST into source code.
-	var buf bytes.Buffer
-	if err := format.Node(&buf, token.NewFileSet(), file); err != nil {
-		return "", fmt.Errorf("failed to format generated Go code: %w", err)
-	}
-
-	return buf.String(), nil
+	return string(formatted), nil
 }
 
-// collectVariables recursively traverses the AST and collects unique variable names.
-func collectVariables(node internalast.Node, vars map[string]struct{}) {
-	if node == nil {
-		return
+// indent prefixes each line of s with prefix.
+func indent(s, prefix string) string {
+	lines := strings.Split(s, "\n")
+	for i := range lines {
+		lines[i] = prefix + lines[i]
 	}
-	switch n := node.(type) {
-	case *internalast.Variable:
-		vars[n.Name] = struct{}{}
-	case *internalast.BinaryExpr:
-		collectVariables(n.Left, vars)
-		collectVariables(n.Right, vars)
-	case *internalast.FuncCall:
-		for _, arg := range n.Args {
-			collectVariables(arg, vars)
-		}
-	case *internalast.NumberLiteral:
-	// Numbers are not variables
-	default:
-		// Should not happen with current AST structure
-		fmt.Printf("Warning: Unhandled node type in collectVariables: %T\n", n)
-	}
+	return strings.Join(lines, "\n")
 }
 
-// buildGoExpr recursively translates our internal AST expression nodes
-// into corresponding goast expression nodes.
-func (g *Generator) buildGoExpr(node internalast.Expr) (goast.Expr, error) {
-	if node == nil {
-		return nil, fmt.Errorf("cannot build Go expression from nil internal AST node")
+// goKeywords is a set of Go reserved keywords.
+var goKeywords = map[string]struct{}{
+	"break": {}, "default": {}, "func": {}, "interface": {}, "select": {},
+	"case": {}, "defer": {}, "go": {}, "map": {}, "struct": {},
+	"chan": {}, "else": {}, "goto": {}, "package": {}, "switch": {},
+	"const": {}, "fallthrough": {}, "if": {}, "range": {}, "type": {},
+	"continue": {}, "for": {}, "import": {}, "return": {}, "var": {},
+	// Technically not keywords, but often problematic as variable names
+	"true": {}, "false": {}, "nil": {}, "iota": {},
+}
+
+// sanitizeVariableName checks if a name is a Go keyword and appends an underscore if it is.
+func sanitizeVariableName(name string) string {
+	if _, isKeyword := goKeywords[name]; isKeyword {
+		return name + "_"
 	}
-
-	switch n := node.(type) {
-	case *internalast.NumberLiteral:
-		// Represent as float literal in Go
-		return &goast.BasicLit{Kind: token.FLOAT, Value: fmt.Sprintf("%f", n.Value)}, nil
-
-	case *internalast.Variable:
-		// Represent as an identifier
-		return goast.NewIdent(n.Name), nil
-
-	case *internalast.BinaryExpr:
-		leftExpr, err := g.buildGoExpr(n.Left)
-		if err != nil {
-			return nil, err
-		}
-		rightExpr, err := g.buildGoExpr(n.Right)
-		if err != nil {
-			return nil, err
-		}
-
-		var goOp token.Token
-		switch n.Op {
-		case "+":
-			goOp = token.ADD
-		case "-":
-			goOp = token.SUB
-		case "*":
-			goOp = token.MUL
-		case "/":
-			goOp = token.QUO // Division
-		case "^":
-			// Exponentiation (a^b) translates to math.Pow(a, b)
-			return &goast.CallExpr{
-				Fun:  goast.NewIdent("math.Pow"), // Assumes "math" is imported
-				Args: []goast.Expr{leftExpr, rightExpr},
-			}, nil
-		default:
-			return nil, fmt.Errorf("unsupported binary operator: %s", n.Op)
-		}
-		return &goast.BinaryExpr{X: leftExpr, Op: goOp, Y: rightExpr}, nil
-
-	case *internalast.FuncCall:
-		args := make([]goast.Expr, len(n.Args))
-		for i, arg := range n.Args {
-			goArg, err := g.buildGoExpr(arg)
-			if err != nil {
-				return nil, fmt.Errorf("failed to build argument %d for function %s: %w", i, n.FuncName, err)
-			}
-			args[i] = goArg
-		}
-
-		// Map LaTeX function names to Go math function names
-		var goFuncName string
-		switch strings.ToLower(n.FuncName) {
-		case "sqrt":
-			goFuncName = "math.Sqrt"
-		case "sin":
-			goFuncName = "math.Sin"
-		case "cos":
-			goFuncName = "math.Cos"
-		case "tan":
-			goFuncName = "math.Tan"
-		// Special case: \frac{a}{b} becomes division
-		case "frac":
-			if len(args) != 2 {
-				return nil, fmt.Errorf("frac function requires exactly 2 arguments, got %d", len(args))
-			}
-			// Translate \frac{a}{b} to a / b
-			return &goast.BinaryExpr{X: args[0], Op: token.QUO, Y: args[1]}, nil
-		default:
-			return nil, fmt.Errorf("unsupported LaTeX function: %s", n.FuncName)
-		}
-
-		return &goast.CallExpr{
-			Fun:  goast.NewIdent(goFuncName), // Assumes "math" is imported
-			Args: args,
-		}, nil
-
-	default:
-		return nil, fmt.Errorf("unsupported internal AST node type: %T", n)
-	}
+	return name
 }
