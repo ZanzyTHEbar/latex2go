@@ -64,7 +64,7 @@ func (g *Generator) generateExpr(e ast.Expr) (string, bool) {
 			// Return an error instead of generating invalid code
 			// Note: We don't return the error directly from here, let Generate handle it.
 			// For now, return empty string and signal no math needed, Generate will catch the error later.
-			// A better approach might be to return an error tuple: (string, bool, error)
+			// TODO: A better approach might be to return an error tuple: (string, bool, error)
 			return fmt.Sprintf("/* unsupported function: %s */", node.FuncName), false
 		}
 
@@ -73,6 +73,178 @@ func (g *Generator) generateExpr(e ast.Expr) (string, bool) {
 			goFuncName,
 			strings.Join(args, ", "),
 		), true
+	case *ast.DerivativeExpr:
+		// For derivatives, we'll implement a simple finite difference approximation
+		// TODO: This is a placeholder for a more sophisticated numerical differentiation, ideally using an inteface for adapters.
+		bodyCode, _ := g.generateExpr(node.Body)
+		
+		// Implement numerical differentiation using central difference formula
+		derivCode := []string{
+			"func() float64 {",
+			"    // Numerical differentiation using central difference",
+			"    h := 0.0001 // Small step size",
+		}
+		
+		if node.Order == 1 {
+			// First-order derivative using central difference: f'(x) ≈ (f(x+h) - f(x-h)) / (2h)
+			derivCode = append(derivCode,
+				fmt.Sprintf("    %s := %s // Original point", node.Var, node.Var), // Assume variable is in scope
+				fmt.Sprintf("    fwd := func() float64 { %s := %s + h; return %s; }() // f(x+h)", node.Var, node.Var, bodyCode),
+				fmt.Sprintf("    bwd := func() float64 { %s := %s - h; return %s; }() // f(x-h)", node.Var, node.Var, bodyCode),
+				"    return (fwd - bwd) / (2.0 * h)",
+			)
+		} else if node.Order == 2 {
+			// Second-order derivative using central difference: f''(x) ≈ (f(x+h) - 2f(x) + f(x-h)) / h²
+			derivCode = append(derivCode,
+				fmt.Sprintf("    %s := %s // Original point", node.Var, node.Var), // Assume variable is in scope
+				fmt.Sprintf("    fwd := func() float64 { %s := %s + h; return %s; }() // f(x+h)", node.Var, node.Var, bodyCode),
+				fmt.Sprintf("    ctr := %s // f(x)", bodyCode),
+				fmt.Sprintf("    bwd := func() float64 { %s := %s - h; return %s; }() // f(x-h)", node.Var, node.Var, bodyCode),
+				"    return (fwd - 2.0*ctr + bwd) / (h * h)",
+			)
+		} else {
+			// For higher-order derivatives, we'll just return a comment
+			derivCode = append(derivCode,
+				"    // Higher-order derivatives not supported",
+				"    return 0.0",
+			)
+		}
+		
+		derivCode = append(derivCode, "}()")
+		return strings.Join(derivCode, "\n"), true // Always needs math for numerical methods
+		
+	case *ast.PiecewiseExpr:
+		// Generate code for piecewise function using if-else statements
+		needsMath := false
+		
+		// Start with a function wrapper for cleaner code
+		piecewiseCode := []string{
+			"func() float64 {",
+		}
+		
+		// Generate if-else statements for each case
+		for i, caseItem := range node.Cases {
+			valueCode, valueNeedsMath := g.generateExpr(caseItem.Value)
+			needsMath = needsMath || valueNeedsMath
+			
+			if caseItem.Condition == nil {
+				// This is the default case (otherwise/else)
+				if i == len(node.Cases)-1 {
+					// Last case without a condition is the default case
+					piecewiseCode = append(piecewiseCode, 
+						"    // Default case",
+						fmt.Sprintf("    return %s", valueCode),
+					)
+				} else {
+					// Error: cases without conditions should be last
+					piecewiseCode = append(piecewiseCode, 
+						"    // ERROR: Unconditional case not at end",
+						fmt.Sprintf("    return %s", valueCode),
+					)
+				}
+			} else {
+				// This is a conditional case
+				conditionCode, condNeedsMath := g.generateExpr(caseItem.Condition)
+				needsMath = needsMath || condNeedsMath
+				
+				if i == 0 {
+					// First condition uses "if"
+					piecewiseCode = append(piecewiseCode, 
+						fmt.Sprintf("    if %s {", conditionCode),
+						fmt.Sprintf("        return %s", valueCode),
+						"    }",
+					)
+				} else {
+					// Subsequent conditions use "else if"
+					piecewiseCode = append(piecewiseCode, 
+						fmt.Sprintf("    else if %s {", conditionCode),
+						fmt.Sprintf("        return %s", valueCode),
+						"    }",
+					)
+				}
+			}
+		}
+		
+		// If no default case was provided, add one that returns NaN
+		lastCase := node.Cases[len(node.Cases)-1]
+		if lastCase.Condition != nil {
+			piecewiseCode = append(piecewiseCode, 
+				"    // No default case provided, returning NaN",
+				"    return math.NaN()",
+			)
+			needsMath = true // Using math.NaN requires math package
+		}
+		
+		// Close the function and call it
+		piecewiseCode = append(piecewiseCode, "}()")
+		
+		return strings.Join(piecewiseCode, "\n"), needsMath
+
+	case *ast.LimitExpr:
+		// For limits, we'll implement a simple approximation by evaluating at a point very close to the limit
+		bodyCode, bodyNeedsMath := g.generateExpr(node.Body)
+		approachesCode, approachesNeedsMath := g.generateExpr(node.Approaches)
+		
+		// Implementation approach: evaluate at a point very close to the limit
+		limitCode := []string{
+			"func() float64 {",
+			"    // Approximating limit by evaluating at a point very close to the target",
+			"    epsilon := 1e-10 // Small value for approximation",
+			fmt.Sprintf("    target := %s // Value approached", approachesCode),
+			fmt.Sprintf("    %s := float64(target) + epsilon // Set variable slightly above target", node.Var),
+			fmt.Sprintf("    return %s // Evaluate expression", bodyCode),
+			"}()",
+		}
+		
+		return strings.Join(limitCode, "\n"), bodyNeedsMath || approachesNeedsMath
+
+	case *ast.IntegralExpr:
+		// For integrals, we'll use numerical integration based on the trapezoidal rule
+		// For definite integrals, we can implement basic numerical integration
+		bodyCode, bodyNeedsMath := g.generateExpr(node.Body)
+		
+		if node.IsDefinite {
+			// Generate definite integral using numerical integration
+			lowerCode, lowerNeedsMath := g.generateExpr(node.Lower)
+			upperCode, upperNeedsMath := g.generateExpr(node.Upper)
+			
+			// We need to implement a basic numerical integration algorithm
+			// Using the trapezoidal rule for simplicity
+			integralCode := []string{
+				"func() float64 {",
+				fmt.Sprintf("    a := %s // Lower bound", lowerCode),
+				fmt.Sprintf("    b := %s // Upper bound", upperCode),
+				"    n := 1000 // Number of intervals for numerical integration",
+				"    h := (b - a) / float64(n)",
+				"    sum := 0.0",
+				"    for i := 0; i <= n; i++ {",
+				fmt.Sprintf("        %s := a + float64(i)*h // Integration variable", node.Var),
+				fmt.Sprintf("        fx := %s // Integrand", bodyCode),
+				"        weight := 1.0",
+				"        if i == 0 || i == n {",
+				"            weight = 0.5",
+				"        }",
+				"        sum += weight * fx",
+				"    }",
+				"    return sum * h",
+				"}()",
+			}
+			
+			return strings.Join(integralCode, "\n"), bodyNeedsMath || lowerNeedsMath || upperNeedsMath
+		} else {
+			// For indefinite integrals, we can only return a comment as symbolic integration
+			// is beyond the scope of a simple translator
+			// TODO: Implement a more sophisticated symbolic integration approach
+			return fmt.Sprintf("/* Symbolic integration of %s with respect to %s not supported */", 
+				bodyCode, node.Var), bodyNeedsMath
+		}
+
+	case *ast.FactorialExpr:
+		// Generate factorial using math.Gamma(n+1)
+		valueCode, _ := g.generateExpr(node.Value)
+		// Use math.Gamma(x+1) for factorial calculation
+		return fmt.Sprintf("math.Gamma(%s + 1.0)", valueCode), true
+
 	case *ast.SumExpr:
 		// Summation or product loop
 		idx := node.Var
@@ -87,7 +259,7 @@ func (g *Generator) generateExpr(e ast.Expr) (string, bool) {
 		}
 		// Ensure loop bounds are treated as floats for comparison if they are variables
 		// Note: This assumes loop variables are integers, which might be fragile.
-		// A more robust solution might involve type analysis or clearer loop semantics.
+		// TODO: A more robust solution might involve type analysis or clearer loop semantics.
 		loop := []string{
 			fmt.Sprintf("result := %s", initVal),
 			// Using float64 for loop counter and bounds for consistency with math ops
@@ -161,9 +333,35 @@ func (g *Generator) Generate(root ast.Expr, pkgName, funcName string) (string, e
 			collect(n.Upper, loopVar)
 			// Collect from body, passing the *new* loopVar for this SumExpr
 			collect(n.Body, n.Var)
+		case *ast.IntegralExpr:
+			// Collect from bounds for definite integrals
+			if n.IsDefinite {
+				collect(n.Lower, loopVar)
+				collect(n.Upper, loopVar)
+			}
+			// Collect from body, passing the integration variable as loopVar to exclude it
+			collect(n.Body, n.Var)
+		case *ast.DerivativeExpr:
+			// Collect from body, passing the differentiation variable as loopVar
+			collect(n.Body, n.Var)
+		case *ast.LimitExpr:
+			// Collect from approaches value
+			collect(n.Approaches, loopVar)
+			// Collect from body, passing the limit variable as loopVar
+			collect(n.Body, n.Var)
+		case *ast.FactorialExpr:
+			// Collect from the factorial's value
+			collect(n.Value, loopVar)
+		case *ast.PiecewiseExpr:
+			// Collect from all case values and conditions
+			for _, caseItem := range n.Cases {
+				collect(caseItem.Value, loopVar)
+				if caseItem.Condition != nil {
+					collect(caseItem.Condition, loopVar)
+				}
+			}
 		}
 	}
-	// ast.SetParents(root) // Removed - Parent pointers not used/available
 	collect(root, "") // Start collection with no loop variable context
 
 	// Build sorted parameter list

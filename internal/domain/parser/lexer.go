@@ -26,12 +26,13 @@ const (
 	NUMBER // Numeric literal (e.g., 3.14, 42)
 
 	// Operators
-	PLUS     // +
-	MINUS    // -
-	ASTERISK // *
-	SLASH    // /
-	CARET    // ^
-	EQUALS   // =
+	PLUS       // +
+	MINUS      // -
+	ASTERISK   // *
+	SLASH      // /
+	CARET      // ^
+	EQUALS     // =
+	EXCLAMATION// ! (factorial)
 
 	// Delimiters
 	LPAREN     // (
@@ -41,7 +42,9 @@ const (
 	UNDERSCORE // _
 
 	// LaTeX Commands (treated specially)
-	COMMAND // e.g., \frac, \sqrt, \sin
+	COMMAND    // e.g., \frac, \sqrt, \sin
+	BEGIN      // \begin{...}
+	END        // \end{...}
 )
 
 // Lexer holds the state of the scanner.
@@ -104,6 +107,8 @@ func (l *Lexer) NextToken() Token {
 		tok = newToken(CARET, l.ch)
 	case '=':
 		tok = newToken(EQUALS, l.ch)
+	case '!':
+		tok = newToken(EXCLAMATION, l.ch)
 	case '_':
 		tok = newToken(UNDERSCORE, l.ch)
 	case '(':
@@ -116,8 +121,16 @@ func (l *Lexer) NextToken() Token {
 		tok = newToken(RBRACE, l.ch)
 	case '\\':
 		tok.Type = COMMAND
-		tok.Literal = l.readCommand()
+		cmdStr := l.readCommand()
+		tok.Literal = cmdStr
 		tok.Pos = l.position
+		
+		// Special handling for \begin and \end
+		if cmdStr == "begin" {
+			tok.Type = BEGIN
+		} else if cmdStr == "end" {
+			tok.Type = END
+		}
 		return tok
 	case 0:
 		tok.Literal = ""
@@ -213,6 +226,8 @@ func (t TokenType) String() string {
 		return "CARET"
 	case EQUALS:
 		return "EQUALS"
+	case EXCLAMATION:
+		return "EXCLAMATION"
 	case UNDERSCORE:
 		return "UNDERSCORE"
 	case LPAREN:
@@ -225,6 +240,10 @@ func (t TokenType) String() string {
 		return "RBRACE"
 	case COMMAND:
 		return "COMMAND"
+	case BEGIN:
+		return "BEGIN"
+	case END:
+		return "END"
 	default:
 		return fmt.Sprintf("UNKNOWN(%d)", int(t))
 	}

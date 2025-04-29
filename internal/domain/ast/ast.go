@@ -63,4 +63,58 @@ type SumExpr struct {
 func (SumExpr) node() {}
 func (SumExpr) expr() {}
 
+// IntegralExpr represents an integral (e.g., \int f(x) dx or \int_a^b f(x) dx).
+type IntegralExpr struct {
+	IsDefinite  bool   // true if the integral has limits (definite), false otherwise (indefinite)
+	Var         string // Integration variable (e.g., "x")
+	Lower, Upper Expr  // Lower and upper bounds for definite integrals (e.g., a, b)
+	Body        Expr   // The expression to integrate (e.g., f(x))
+}
+
+func (IntegralExpr) node() {}
+func (IntegralExpr) expr() {}
+
+// DerivativeExpr represents a derivative (e.g., \frac{d}{dx} f(x) or \frac{\partial}{\partial x} f(x)).
+type DerivativeExpr struct {
+	IsPartial   bool   // true for partial derivatives, false for total derivatives
+	Var         string // Variable to differentiate with respect to (e.g., "x")
+	Order       int    // Order of derivative (e.g., 1 for first derivative, 2 for second)
+	Body        Expr   // The expression to differentiate (e.g., f(x))
+}
+
+func (DerivativeExpr) node() {}
+func (DerivativeExpr) expr() {}
+
+// LimitExpr represents a limit (e.g., \lim_{x \to a} f(x)).
+type LimitExpr struct {
+	Var        string // Limit variable (e.g., "x")
+	Approaches Expr   // Value that the variable approaches (e.g., a)
+	Body       Expr   // The expression to compute the limit of (e.g., f(x))
+}
+
+func (LimitExpr) node() {}
+func (LimitExpr) expr() {}
+
+// FactorialExpr represents a factorial (e.g., n!).
+type FactorialExpr struct {
+	Value Expr // The expression to compute factorial of
+}
+
+func (FactorialExpr) node() {}
+func (FactorialExpr) expr() {}
+
+// PiecewiseCase represents one case in a piecewise function definition.
+type PiecewiseCase struct {
+	Value      Expr // Expression value for this case
+	Condition  Expr // Condition when this case applies (nil for "otherwise" case)
+}
+
+// PiecewiseExpr represents a piecewise function definition (e.g., \begin{cases}...\end{cases}).
+type PiecewiseExpr struct {
+	Cases []PiecewiseCase // List of cases in the piecewise function
+}
+
+func (PiecewiseExpr) node() {}
+func (PiecewiseExpr) expr() {}
+
 // TODO: Add IntegralExpr, DerivativeExpr, LimitExpr, PiecewiseExpr, SetIterationExpr as needed.
