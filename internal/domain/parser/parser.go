@@ -121,7 +121,8 @@ func (p *Parser) ParseExpression() (internalast.Expr, error) {
 	// Ensure we consumed the whole input (optional, depends on requirements)
 	if p.peekToken.Type != EOF {
 		p.addError("unexpected token '%s' after expression", p.peekToken.Literal)
-		return nil, fmt.Errorf(p.errors[len(p.errors)-1]) // Return the last error
+		// Use constant format string for fmt.Errorf
+		return nil, fmt.Errorf("%s", p.errors[len(p.errors)-1]) // Return the last error
 	}
 
 	return expr, nil
@@ -134,7 +135,7 @@ func (p *Parser) parseExpression(precedence int) (internalast.Expr, error) {
 	prefix := p.prefixParseFns[p.curToken.Type]
 	if prefix == nil {
 		err := fmt.Errorf("no prefix parse function found for token %s ('%s')", p.curToken.Type, p.curToken.Literal)
-		p.addError(err.Error())
+		p.addError("%s", err.Error()) // Use constant format string
 		return nil, err
 	}
 	leftExp, err := prefix()
@@ -193,7 +194,7 @@ func (p *Parser) parseNumberLiteral() (internalast.Expr, error) {
 	val, err := strconv.ParseFloat(p.curToken.Literal, 64)
 	if err != nil {
 		err = fmt.Errorf("could not parse '%s' as float: %w", p.curToken.Literal, err)
-		p.addError(err.Error())
+		p.addError("%s", err.Error()) // Use constant format string
 		return nil, err
 	}
 	return &internalast.NumberLiteral{Value: val}, nil
@@ -203,7 +204,7 @@ func (p *Parser) parsePrefixExpression() (internalast.Expr, error) {
 	// Currently only handles unary minus
 	if p.curToken.Type != MINUS {
 		err := fmt.Errorf("expected prefix operator (e.g., '-'), got %s", p.curToken.Type)
-		p.addError(err.Error())
+		p.addError("%s", err.Error()) // Use constant format string
 		return nil, err
 	}
 
@@ -303,7 +304,7 @@ func (p *Parser) parseCommandExpression() (internalast.Expr, error) {
 	if len(args) == 0 {
 		// Handle commands without braces if needed (e.g., \sin x) - currently unsupported
 		err := fmt.Errorf("expected '{' arguments after command '\\%s', got %s", funcName, p.peekToken.Type)
-		p.addError(err.Error())
+		p.addError("%s", err.Error()) // Use constant format string
 		return nil, err
 	}
 
@@ -318,7 +319,7 @@ func (p *Parser) parseCommandExpression() (internalast.Expr, error) {
 
 	if requiredArgs != -1 && len(args) != requiredArgs {
 		err := fmt.Errorf("\\%s requires %d argument(s), got %d", funcName, requiredArgs, len(args))
-		p.addError(err.Error())
+		p.addError("%s", err.Error()) // Use constant format string
 		return nil, err
 	}
 	// --- End Validation ---

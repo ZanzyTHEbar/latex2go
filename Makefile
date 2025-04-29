@@ -16,11 +16,11 @@ GOBUILD_FLAGS := $(BUILD_FLAGS) -o
 GOOS := $(shell go env GOOS)
 GOARCH := $(shell go env GOARCH)
 ifeq ($(GOOS), windows)
-	GOOS := windows
+GOOS := windows
 else ifeq ($(GOOS), darwin)
-	GOOS := darwin
+GOOS := darwin
 else ifeq ($(GOOS), linux)
-	GOOS := linux
+GOOS := linux
 endif
 
 # Binary names
@@ -53,7 +53,8 @@ test:
 	$(GOTEST) -v ./...
 
 run: build
-	bin/$(BINARY_NAME_SERVER)
+	@echo "Running $(BINARY_NAME)... (Example: $(BINARY_PATH)/$(BINARY_NAME) --latex 'a+b')"
+	@$(BINARY_PATH)/$(BINARY_NAME) # Add arguments here if needed, e.g., --latex 'x^2'
 
 deps:
 	$(GOMOD) download
@@ -69,12 +70,8 @@ vet:
 	go vet ./...
 	@echo "Vet completed."
 
-# Generate mocks for testing
-mocks:
-	mockery --all --dir=internal --output=internal/mocks
-
 # Clean targets
-clean-all: proto-clean
+clean-all:
 	@echo "Cleaning all build artifacts..."
 	@rm -rf $(BINARY_PATH_PREFIX)
 	@go clean -cache -modcache -i -r
@@ -132,5 +129,5 @@ help:
 
 # Mark all targets as phony (not associated with files)
 .PHONY: all build docker-run docker-down test run dev stop-dev monitor-logs build-binary \
-	proto proto-deps proto-lint proto-format proto-gen proto-breaking proto-clean proto-verify \
-	clean clean-all help
+proto proto-deps proto-lint proto-format proto-gen proto-breaking proto-clean proto-verify \
+clean clean-all help
