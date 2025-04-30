@@ -2,12 +2,15 @@
 
 `latex2go` is a command-line tool written in Go that converts mathematical equations written in LaTeX format into equivalent Go code.
 
+> [!NOTE]\
+> For now, this project is a personal WIP. Do not expect diligent work. This is a work of passion, and nothing more, for now. 
+
 ## Features
 
-*   Parses LaTeX mathematical expressions.
-*   Generates corresponding Go code representing the calculation.
-*   Supports outputting generated code to standard output or a file.
-*   Configurable package name and function name for the generated code.
+* Parses LaTeX mathematical expressions.
+* Generates corresponding Go code representing the calculation.
+* Supports outputting generated code to standard output or a file.
+* Configurable package name and function name for the generated code.  
 
 ## Installation
 
