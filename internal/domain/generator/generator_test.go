@@ -223,6 +223,45 @@ func TestGenerator(t *testing.T) {
 		assert.Contains(t, err.Error(), "unsupported LaTeX function: unknown")
 	})
 
+	t.Run("Advanced Mathematical Functions", func(t *testing.T) {
+		// Test various advanced math functions
+		testCases := []struct {
+			funcName     string
+			expectedGoFunc string
+		}{
+			{"exp", "math.Exp"},
+			{"ln", "math.Log"},
+			{"log", "math.Log10"},
+			{"asin", "math.Asin"},
+			{"acos", "math.Acos"},
+			{"atan", "math.Atan"},
+			{"sinh", "math.Sinh"},
+			{"cosh", "math.Cosh"},
+			{"tanh", "math.Tanh"},
+			{"abs", "math.Abs"},
+			{"floor", "math.Floor"},
+			{"ceil", "math.Ceil"},
+		}
+
+		for _, tc := range testCases {
+			t.Run(tc.funcName, func(t *testing.T) {
+				inputAST := &ast.FuncCall{
+					FuncName: tc.funcName,
+					Args:     []ast.Expr{&ast.Variable{Name: "x"}},
+				}
+				
+				goCode, err := gen.Generate(inputAST, "math", "testFunc")
+				require.NoError(t, err)
+				
+				// Check that the expected Go function is used
+				assert.Contains(t, goCode, tc.expectedGoFunc)
+				
+				// Check basic structure
+				checkGeneratedCode(t, goCode, err, "math", "testFunc", []string{"x"}, true)
+			})
+		}
+	})
+
 	// TODO: Add test for unsupported AST node type if a relevant scenario exists
 
 }

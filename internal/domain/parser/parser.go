@@ -672,7 +672,7 @@ func (p *Parser) parseCommandExpression() (internalast.Expr, error) {
 		
 		// If we didn't find a limit pattern, fall back to regular function parsing
 		requiredArgs = 1
-	case "sqrt", "sin", "cos", "tan":
+	case "sqrt", "sin", "cos", "tan", "exp", "ln", "log", "asin", "acos", "atan", "sinh", "cosh", "tanh", "abs", "floor", "ceil":
 		requiredArgs = 1
 	}
 

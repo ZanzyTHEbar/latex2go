@@ -355,23 +355,93 @@ func IntegralExample() float64 {
 }
 ```
 
+## Advanced Mathematical Functions Examples
+
+All advanced mathematical functions are now fully supported with complete parser and generator implementation.
+
+### 8. Exponential and Logarithmic Functions
+```latex
+\exp{x} + \ln{y} + \log{z}
+```
+
+**Generated Go Code:**
+```go
+package math
+
+import "math"
+
+func ExponentialLogarithmic(x float64, y float64, z float64) float64 {
+	return math.Exp(x) + math.Log(y) + math.Log10(z)
+}
+```
+
+### 9. Inverse Trigonometric Functions
+```latex
+\asin{x} + \acos{y} + \atan{z}
+```
+
+**Generated Go Code:**
+```go
+package math
+
+import "math"
+
+func InverseTrigonometric(x float64, y float64, z float64) float64 {
+	return math.Asin(x) + math.Acos(y) + math.Atan(z)
+}
+```
+
+### 10. Hyperbolic Functions
+```latex
+\sinh{α} + \cosh{β} + \tanh{γ}
+```
+
+**Generated Go Code:**
+```go
+package math
+
+import "math"
+
+func HyperbolicFunctions(alpha float64, beta float64, gamma float64) float64 {
+	return math.Sinh(alpha) + math.Cosh(beta) + math.Tanh(gamma)
+}
+```
+
+### 11. Utility Functions
+```latex
+\abs{x} + \floor{y} + \ceil{z}
+```
+
+**Generated Go Code:**
+```go
+package math
+
+import "math"
+
+func UtilityFunctions(x float64, y float64, z float64) float64 {
+	return math.Abs(x) + math.Floor(y) + math.Ceil(z)
+}
+```
+
 ## Testing
 
 Comprehensive test suite includes:
 - **34 physics symbol tests** covering all Greek letters and special symbols
 - **9 complex Standard Model expressions**
+- **17 advanced mathematical function tests** covering all supported functions
 - **Regression tests** ensuring existing functionality remains intact
 - **Unicode handling verification**
 
 ## Implemented Advanced Features
 
-✅ **Mathematical Functions:** Exponentials (exp), logarithms (ln, log), trigonometry (sin, cos, tan), square root, factorial  
+✅ **Mathematical Functions:** Exponentials (exp), logarithms (ln, log), trigonometry (sin, cos, tan, asin, acos, atan), hyperbolic functions (sinh, cosh, tanh), utility functions (abs, floor, ceil), square root, factorial  
 ✅ **Summation and Integration:** Full support for summation and numerical integration with bounds  
 ✅ **Greek Letter Support:** All Greek letters used in physics with proper Go identifier conversion  
 ✅ **Special Physics Symbols:** Partial derivatives (∂), nabla (∇), dagger (†), Lagrangian (ℒ)  
 ✅ **Subscript Notation:** Physics notation with subscripts (A_μ, ψ_L, F_μν)  
 ✅ **Equation Support:** Mathematical equations with equality checking functions  
 ✅ **Complex Expressions:** Multi-term expressions with proper precedence  
+✅ **Comprehensive Function Support:** All documented mathematical functions are now fully implemented in both parser and generator  
 
 ## Next Steps for Full Standard Model Support
 
