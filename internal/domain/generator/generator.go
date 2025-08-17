@@ -101,8 +101,34 @@ func (g *Generator) generateExpr(e ast.Expr) (string, bool) {
 
 		// Check if the function is supported in the math package
 		goFuncName := cases.Title(language.English, cases.Compact).String(node.FuncName)
-		supportedMathFuncs := map[string]bool{"Sqrt": true, "Sin": true, "Cos": true, "Tan": true, "Pow": true /* Add others as needed */} // Pow handled by BinaryExpr ^
-		if _, supported := supportedMathFuncs[goFuncName]; !supported && node.FuncName != "pow" { // Allow pow implicitly via ^
+		
+		// Handle special function name mappings
+		funcNameMappings := map[string]string{
+			"ln":   "Log",     // Natural logarithm
+			"log":  "Log10",   // Base-10 logarithm (common assumption)
+			"exp":  "Exp",     // Exponential function
+		}
+		if mappedName, exists := funcNameMappings[node.FuncName]; exists {
+			goFuncName = mappedName
+		}
+		supportedMathFuncs := map[string]bool{
+			"Sqrt": true, "Sin": true, "Cos": true, "Tan": true, "Pow": true,
+			"Exp": true, "Log": true, "Log10": true, "Ln": true,
+			"Asin": true, "Acos": true, "Atan": true,
+			"Sinh": true, "Cosh": true, "Tanh": true,
+			"Abs": true, "Floor": true, "Ceil": true,
+		} // Pow handled by BinaryExpr ^
+		
+		// Check if function is supported (either directly or through mapping)
+		isSupported := false
+		if _, supported := supportedMathFuncs[goFuncName]; supported {
+			isSupported = true
+		}
+		if node.FuncName == "pow" { // Allow pow implicitly via ^
+			isSupported = true
+		}
+		
+		if !isSupported {
 			// Return an error instead of generating invalid code
 			// Note: We don't return the error directly from here, let Generate handle it.
 			// For now, return empty string and signal no math needed, Generate will catch the error later.
