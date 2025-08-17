@@ -100,6 +100,23 @@ func (p *Parser) ParseExpression() (internalast.Expr, error) {
 	if err != nil {
 		return nil, err
 	}
+	
+	// Check if this is an equation (has = sign)
+	if p.peekToken.Type == EQUALS {
+		p.nextToken() // consume '='
+		p.nextToken() // move to right side
+		
+		rightExpr, err := p.parseExpression(LOWEST)
+		if err != nil {
+			return nil, err
+		}
+		
+		expr = &internalast.EquationExpr{
+			Left:  expr,
+			Right: rightExpr,
+		}
+	}
+	
 	if len(p.errors) > 0 {
 		return nil, fmt.Errorf("parsing failed:\n\t%s", strings.Join(p.errors, "\n\t"))
 	}
@@ -163,7 +180,60 @@ func (p *Parser) registerInfix(tokenType TokenType, fn infixParseFn) {
 // --- Parsing Functions ---
 
 func (p *Parser) parseIdentifier() (internalast.Expr, error) {
-	return &internalast.Variable{Name: p.curToken.Literal}, nil
+	baseName := p.curToken.Literal
+	
+	// For now, let's be conservative and only parse subscripts, not superscripts
+	// to avoid interfering with exponentiation parsing
+	var subscripts []internalast.Expr
+	
+	// Only parse subscripts when they're immediately following
+	if p.peekToken.Type == UNDERSCORE {
+		p.nextToken() // consume '_'
+		if p.peekToken.Type == LBRACE {
+			p.nextToken() // consume '{'
+			p.nextToken() // move to expression inside braces
+			
+			// Only accept simple identifiers or numbers inside braces for subscripts
+			if p.curToken.Type == IDENT {
+				subscripts = append(subscripts, &internalast.Variable{Name: p.curToken.Literal})
+			} else if p.curToken.Type == NUMBER {
+				val, err := strconv.ParseFloat(p.curToken.Literal, 64)
+				if err != nil {
+					return nil, err
+				}
+				subscripts = append(subscripts, &internalast.NumberLiteral{Value: val})
+			} else {
+				// If it's not a simple identifier or number, don't parse as subscript
+				// Reset position and return plain variable
+				return &internalast.Variable{Name: baseName}, nil
+			}
+			
+			if p.peekToken.Type != RBRACE {
+				err := fmt.Errorf("expected '}' after subscript")
+				p.addError("%s", err.Error())
+				return nil, err
+			}
+			p.nextToken() // consume '}'
+		} else if p.peekToken.Type == IDENT {
+			// Single character subscript (like A_μ)
+			p.nextToken()
+			subscripts = append(subscripts, &internalast.Variable{Name: p.curToken.Literal})
+		} else {
+			// If the next token after _ is not IDENT or LBRACE, treat as plain variable
+			return &internalast.Variable{Name: baseName}, nil
+		}
+	}
+	
+	// Return appropriate variable type based on what we found
+	if len(subscripts) > 0 {
+		return &internalast.SubscriptedVariable{
+			Base:       baseName,
+			Subscripts: subscripts,
+		}, nil
+	}
+	
+	// Plain variable
+	return &internalast.Variable{Name: baseName}, nil
 }
 
 func (p *Parser) parseNumberLiteral() (internalast.Expr, error) {
@@ -835,4 +905,11 @@ func (p *Parser) peekNTokens(n int) (TokenType, string) {
 	
 	// If we can't peek that far ahead, return EOF
 	return EOF, ""
+}
+
+// isGreekLetter checks if a rune is a Greek letter commonly used in physics
+func isGreekLetter(ch rune) bool {
+	// Greek lowercase: α β γ δ ε ζ η θ ι κ λ μ ν ξ ο π ρ σ τ υ φ χ ψ ω
+	// Greek uppercase: Α Β Γ Δ Ε Ζ Η Θ Ι Κ Λ Μ Ν Ξ Ο Π Ρ Σ Τ Υ Φ Χ Ψ Ω
+	return (0x03B1 <= ch && ch <= 0x03C9) || (0x0391 <= ch && ch <= 0x03A9)
 }
