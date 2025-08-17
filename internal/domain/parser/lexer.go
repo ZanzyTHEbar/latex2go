@@ -193,7 +193,31 @@ func (l *Lexer) readNumber() string {
 }
 
 func isLetter(ch rune) bool {
-	return 'a' <= ch && ch <= 'z' || 'A' <= ch && ch <= 'Z'
+	// Standard ASCII letters
+	if ('a' <= ch && ch <= 'z') || ('A' <= ch && ch <= 'Z') {
+		return true
+	}
+	
+	// Greek letters commonly used in physics
+	// Lowercase: α β γ δ ε ζ η θ ι κ λ μ ν ξ ο π ρ σ τ υ φ χ ψ ω
+	// Uppercase: Α Β Γ Δ Ε Ζ Η Θ Ι Κ Λ Μ Ν Ξ Ο Π Ρ Σ Τ Υ Φ Χ Ψ Ω
+	if (0x03B1 <= ch && ch <= 0x03C9) || (0x0391 <= ch && ch <= 0x03A9) {
+		return true
+	}
+	
+	// Additional physics symbols that can be part of identifiers
+	switch ch {
+	case 0x2202: // ∂ (partial derivative)
+		return true
+	case 0x2207: // ∇ (nabla)
+		return true
+	case 0x2020: // † (dagger)
+		return true
+	case 0x2112: // ℒ (script L for Lagrangian) - corrected codepoint
+		return true
+	}
+	
+	return false
 }
 
 func isDigit(ch rune) bool {

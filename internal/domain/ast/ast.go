@@ -31,6 +31,34 @@ type Variable struct {
 func (Variable) node() {}
 func (Variable) expr() {}
 
+// SubscriptedVariable represents a variable with subscripts (e.g., A_μ, x_1, ψ_L).
+type SubscriptedVariable struct {
+	Base       string // Base variable name (e.g., "A", "x", "psi")
+	Subscripts []Expr // Subscript expressions (e.g., "μ", "1", "L")
+}
+
+func (SubscriptedVariable) node() {}
+func (SubscriptedVariable) expr() {}
+
+// SuperscriptedVariable represents a variable with superscripts (e.g., γ^μ, x^2).
+type SuperscriptedVariable struct {
+	Base         string // Base variable name (e.g., "gamma", "x")
+	Superscripts []Expr // Superscript expressions (e.g., "μ", "2")
+}
+
+func (SuperscriptedVariable) node() {}
+func (SuperscriptedVariable) expr() {}
+
+// IndexedVariable represents a variable with both subscripts and superscripts (e.g., T^μ_ν).
+type IndexedVariable struct {
+	Base         string // Base variable name (e.g., "T")
+	Subscripts   []Expr // Subscript expressions (e.g., "ν")
+	Superscripts []Expr // Superscript expressions (e.g., "μ")
+}
+
+func (IndexedVariable) node() {}
+func (IndexedVariable) expr() {}
+
 // BinaryExpr represents an operation with two operands (e.g., a + b, x ^ 2).
 type BinaryExpr struct {
 	Op    string // Operator token (e.g., "+", "-", "*", "/", "^")
@@ -116,5 +144,14 @@ type PiecewiseExpr struct {
 
 func (PiecewiseExpr) node() {}
 func (PiecewiseExpr) expr() {}
+
+// EquationExpr represents an equation with left and right sides (e.g., E = mc^2).
+type EquationExpr struct {
+	Left  Expr // Left side of the equation
+	Right Expr // Right side of the equation
+}
+
+func (EquationExpr) node() {}
+func (EquationExpr) expr() {}
 
 // TODO: Add IntegralExpr, DerivativeExpr, LimitExpr, PiecewiseExpr, SetIterationExpr as needed.

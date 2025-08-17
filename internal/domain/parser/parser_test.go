@@ -345,6 +345,69 @@ func TestParser_Errors(t *testing.T) {
 	}
 }
 
+func TestParser_AdvancedMathematicalFunctions(t *testing.T) {
+	tests := []struct {
+		input        string
+		expectedFunc string
+		expectedArgs []interface{}
+	}{
+		// Exponential and Logarithmic functions
+		{`\exp{x}`, "exp", []interface{}{"x"}},
+		{`\ln{y}`, "ln", []interface{}{"y"}},
+		{`\log{z}`, "log", []interface{}{"z"}},
+		
+		// Inverse trigonometric functions
+		{`\asin{a}`, "asin", []interface{}{"a"}},
+		{`\acos{b}`, "acos", []interface{}{"b"}},
+		{`\atan{c}`, "atan", []interface{}{"c"}},
+		
+		// Hyperbolic functions
+		{`\sinh{u}`, "sinh", []interface{}{"u"}},
+		{`\cosh{v}`, "cosh", []interface{}{"v"}},
+		{`\tanh{w}`, "tanh", []interface{}{"w"}},
+		
+		// Utility functions
+		{`\abs{x}`, "abs", []interface{}{"x"}},
+		{`\floor{y}`, "floor", []interface{}{"y"}},
+		{`\ceil{z}`, "ceil", []interface{}{"z"}},
+		
+		// With numeric arguments
+		{`\exp{2.5}`, "exp", []interface{}{2.5}},
+		{`\abs{-3.14}`, "abs", []interface{}{nil}}, // Complex expression (unary minus)
+		
+		// With complex expressions
+		{`\ln{x+1}`, "ln", []interface{}{nil}}, // Complex expression
+		{`\sinh{a*b}`, "sinh", []interface{}{nil}}, // Complex expression
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			l := NewLexer(tt.input)
+			p := newStatefulParser(l)
+			expr, err := p.ParseExpression()
+			require.NoError(t, err)
+			checkParserErrors(t, p)
+			require.NotNil(t, expr)
+
+			callExpr, ok := expr.(*internalast.FuncCall)
+			require.True(t, ok, "Expected FuncCall")
+			assert.Equal(t, tt.expectedFunc, callExpr.FuncName)
+			require.Len(t, callExpr.Args, len(tt.expectedArgs))
+
+			for i, expectedArg := range tt.expectedArgs {
+				if expectedArg == nil {
+					// Check that the argument is a non-literal expression
+					_, isNum := callExpr.Args[i].(*internalast.NumberLiteral)
+					_, isVar := callExpr.Args[i].(*internalast.Variable)
+					assert.False(t, isNum || isVar, fmt.Sprintf("Arg %d should be a complex expression, not a literal", i))
+				} else {
+					testLiteralExpression(t, callExpr.Args[i], expectedArg)
+				}
+			}
+		})
+	}
+}
+
 func TestParser_AdvancedExpressions(t *testing.T) {
 	tests := []struct {
 		input      string

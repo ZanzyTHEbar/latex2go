@@ -20,6 +20,35 @@ func NewGenerator() *Generator {
 	return &Generator{}
 }
 
+// convertGreekToGo converts Greek letters and special physics symbols to Go-compatible names
+func (g *Generator) convertGreekToGo(name string) string {
+	// Map of Greek letters and physics symbols to Go-compatible names
+	greekToGo := map[string]string{
+		// Lowercase Greek
+		"α": "alpha", "β": "beta", "γ": "gamma", "δ": "delta",
+		"ε": "epsilon", "ζ": "zeta", "η": "eta", "θ": "theta",
+		"ι": "iota", "κ": "kappa", "λ": "lambda", "μ": "mu",
+		"ν": "nu", "ξ": "xi", "ο": "omicron", "π": "pi",
+		"ρ": "rho", "σ": "sigma", "τ": "tau", "υ": "upsilon",
+		"φ": "phi", "χ": "chi", "ψ": "psi", "ω": "omega",
+		// Uppercase Greek
+		"Α": "Alpha", "Β": "Beta", "Γ": "Gamma", "Δ": "Delta",
+		"Ε": "Epsilon", "Ζ": "Zeta", "Η": "Eta", "Θ": "Theta",
+		"Ι": "Iota", "Κ": "Kappa", "Λ": "Lambda", "Μ": "Mu",
+		"Ν": "Nu", "Ξ": "Xi", "Ο": "Omicron", "Π": "Pi",
+		"Ρ": "Rho", "Σ": "Sigma", "Τ": "Tau", "Υ": "Upsilon",
+		"Φ": "Phi", "Χ": "Chi", "Ψ": "Psi", "Ω": "Omega",
+		// Special physics symbols
+		"∂": "partial", "∇": "nabla", "†": "dagger", "ℒ": "Lagrangian",
+	}
+	
+	result := name
+	for greek, goName := range greekToGo {
+		result = strings.ReplaceAll(result, greek, goName)
+	}
+	return result
+}
+
 // generateExpr renders an AST expression or loop into Go code snippet.
 // It also returns a boolean indicating if the generated code requires the "math" package.
 func (g *Generator) generateExpr(e ast.Expr) (string, bool) {
@@ -27,7 +56,20 @@ func (g *Generator) generateExpr(e ast.Expr) (string, bool) {
 	case *ast.NumberLiteral:
 		return fmt.Sprintf("%g", node.Value), false
 	case *ast.Variable:
-		return node.Name, false
+		return g.convertGreekToGo(node.Name), false
+	case *ast.SubscriptedVariable:
+		// Convert subscripted variables to valid Go identifiers
+		// A_μ becomes A_mu, ψ_L becomes psi_L
+		subscriptStrs := make([]string, len(node.Subscripts))
+		needsMath := false
+		for i, sub := range node.Subscripts {
+			subCode, subNeedsMath := g.generateExpr(sub)
+			subscriptStrs[i] = subCode
+			needsMath = needsMath || subNeedsMath
+		}
+		// Convert base name from Greek letters to Go-compatible names
+		baseName := g.convertGreekToGo(node.Base)
+		return fmt.Sprintf("%s_%s", baseName, strings.Join(subscriptStrs, "_")), needsMath
 	case *ast.BinaryExpr:
 		leftCode, leftNeedsMath := g.generateExpr(node.Left)
 		rightCode, rightNeedsMath := g.generateExpr(node.Right)
@@ -59,8 +101,34 @@ func (g *Generator) generateExpr(e ast.Expr) (string, bool) {
 
 		// Check if the function is supported in the math package
 		goFuncName := cases.Title(language.English, cases.Compact).String(node.FuncName)
-		supportedMathFuncs := map[string]bool{"Sqrt": true, "Sin": true, "Cos": true, "Tan": true, "Pow": true /* Add others as needed */} // Pow handled by BinaryExpr ^
-		if _, supported := supportedMathFuncs[goFuncName]; !supported && node.FuncName != "pow" { // Allow pow implicitly via ^
+		
+		// Handle special function name mappings
+		funcNameMappings := map[string]string{
+			"ln":   "Log",     // Natural logarithm
+			"log":  "Log10",   // Base-10 logarithm (common assumption)
+			"exp":  "Exp",     // Exponential function
+		}
+		if mappedName, exists := funcNameMappings[node.FuncName]; exists {
+			goFuncName = mappedName
+		}
+		supportedMathFuncs := map[string]bool{
+			"Sqrt": true, "Sin": true, "Cos": true, "Tan": true, "Pow": true,
+			"Exp": true, "Log": true, "Log10": true, "Ln": true,
+			"Asin": true, "Acos": true, "Atan": true,
+			"Sinh": true, "Cosh": true, "Tanh": true,
+			"Abs": true, "Floor": true, "Ceil": true,
+		} // Pow handled by BinaryExpr ^
+		
+		// Check if function is supported (either directly or through mapping)
+		isSupported := false
+		if _, supported := supportedMathFuncs[goFuncName]; supported {
+			isSupported = true
+		}
+		if node.FuncName == "pow" { // Allow pow implicitly via ^
+			isSupported = true
+		}
+		
+		if !isSupported {
 			// Return an error instead of generating invalid code
 			// Note: We don't return the error directly from here, let Generate handle it.
 			// For now, return empty string and signal no math needed, Generate will catch the error later.
@@ -269,6 +337,21 @@ func (g *Generator) generateExpr(e ast.Expr) (string, bool) {
 			"return result", // Return result directly from loop structure
 		}
 		return strings.Join(loop, "\n"), needsMath
+	case *ast.EquationExpr:
+		// For equations, we'll generate an assert-like function that checks equality
+		leftCode, leftNeedsMath := g.generateExpr(node.Left)
+		rightCode, rightNeedsMath := g.generateExpr(node.Right)
+		needsMath := leftNeedsMath || rightNeedsMath
+		
+		// Generate a function that computes the difference (should be close to zero for valid equation)
+		equationCode := []string{
+			"func() float64 {",
+			fmt.Sprintf("    left := %s", leftCode),
+			fmt.Sprintf("    right := %s", rightCode),
+			"    return left - right // Should be close to zero if equation holds",
+			"}()",
+		}
+		return strings.Join(equationCode, "\n"), needsMath
 	default:
 		return "", false
 	}
@@ -308,9 +391,25 @@ func (g *Generator) Generate(root ast.Expr, pkgName, funcName string) (string, e
 		switch n := e.(type) {
 		case *ast.Variable:
 			// Exclude loop variable from parameters
-			if n.Name != loopVar {
-				vars[sanitizeVariableName(n.Name)] = struct{}{}
+			varName := g.convertGreekToGo(n.Name)
+			if varName != loopVar {
+				vars[sanitizeVariableName(varName)] = struct{}{}
 			}
+		case *ast.SubscriptedVariable:
+			// Handle subscripted variables like A_μ
+			baseName := g.convertGreekToGo(n.Base)
+			if baseName != loopVar {
+				subscriptStr := g.sanitizeSubscripts(n.Subscripts)
+				vars[sanitizeVariableName(baseName+"_"+subscriptStr)] = struct{}{}
+			}
+			// Also collect from subscript expressions
+			for _, sub := range n.Subscripts {
+				collect(sub, loopVar)
+			}
+		case *ast.EquationExpr:
+			// Collect from both sides of the equation
+			collect(n.Left, loopVar)
+			collect(n.Right, loopVar)
 		case *ast.BinaryExpr:
 			collect(n.Left, loopVar)
 			collect(n.Right, loopVar)
@@ -427,4 +526,22 @@ func sanitizeVariableName(name string) string {
 		return name + "_"
 	}
 	return name
+}
+
+// sanitizeSubscripts converts subscript expressions to Go-compatible identifier parts
+func (g *Generator) sanitizeSubscripts(subscripts []ast.Expr) string {
+	parts := make([]string, len(subscripts))
+	for i, sub := range subscripts {
+		code, _ := g.generateExpr(sub)
+		// Remove special characters and replace with underscores
+		sanitized := strings.ReplaceAll(code, " ", "_")
+		sanitized = strings.ReplaceAll(sanitized, "+", "plus")
+		sanitized = strings.ReplaceAll(sanitized, "-", "minus")
+		sanitized = strings.ReplaceAll(sanitized, "*", "times")
+		sanitized = strings.ReplaceAll(sanitized, "/", "div")
+		sanitized = strings.ReplaceAll(sanitized, "(", "")
+		sanitized = strings.ReplaceAll(sanitized, ")", "")
+		parts[i] = sanitized
+	}
+	return strings.Join(parts, "_")
 }
